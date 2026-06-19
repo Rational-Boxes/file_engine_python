@@ -10,10 +10,12 @@ class TestFileType(unittest.TestCase):
     
     def test_file_type_constants(self):
         """Test that FileType constants are properly defined"""
-        # These values should match the protobuf definitions
+        # These values should match the fileengine ProtoFileType enum
+        # (PROTO_REGULAR_FILE = 0, PROTO_DIRECTORY = 1). The protocol has no
+        # symlink type.
         self.assertEqual(FileType.REGULAR_FILE, 0)
         self.assertEqual(FileType.DIRECTORY, 1)
-        self.assertEqual(FileType.SYMLINK, 2)
+        self.assertFalse(hasattr(FileType, 'SYMLINK'))
 
 
 class TestFileInfo(unittest.TestCase):

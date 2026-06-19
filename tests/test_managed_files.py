@@ -15,7 +15,7 @@ class TestManagedFiles(unittest.TestCase):
         # Mock the gRPC channel and stub
         self.mock_channel = Mock()
         self.mock_stub = Mock()
-        
+
         # Patch the gRPC channel creation
         with patch('fileengine.client.grpc.insecure_channel', return_value=self.mock_channel):
             with patch('fileengine.client.fileservice_pb2_grpc.FileServiceStub', return_value=self.mock_stub):
@@ -26,7 +26,7 @@ class TestManagedFiles(unittest.TestCase):
                     server_address="localhost:50051",
                     tenant="test_tenant"
                 )
-                
+
                 # Set the stub on the instance
                 self.mf.stub = self.mock_stub
 
@@ -43,12 +43,12 @@ class TestManagedFiles(unittest.TestCase):
             server_address="localhost:50051",
             tenant="my_tenant"
         )
-        
+
         self.assertEqual(mf.user, "alice")
         self.assertEqual(mf.roles, ["admin", "user"])
         self.assertEqual(mf.claims, ["read", "write", "delete"])
         self.assertEqual(mf.tenant, "my_tenant")
-        
+
         mf.close()
 
     def test_set_user_information(self):
@@ -58,7 +58,7 @@ class TestManagedFiles(unittest.TestCase):
             roles=["new_role"],
             claims=["new_claim"]
         )
-        
+
         self.assertEqual(self.mf.user, "new_user")
         self.assertEqual(self.mf.roles, ["new_role"])
         self.assertEqual(self.mf.claims, ["new_claim"])
@@ -70,9 +70,9 @@ class TestManagedFiles(unittest.TestCase):
         mock_response.success = True
         mock_response.uid = "test-uuid-123"
         self.mock_stub.MakeDirectory.return_value = mock_response
-        
+
         result = self.mf.mkdir("parent-uuid", "test_dir")
-        
+
         self.assertEqual(result, "test-uuid-123")
         self.mock_stub.MakeDirectory.assert_called_once()
 
@@ -82,29 +82,29 @@ class TestManagedFiles(unittest.TestCase):
         mock_response = Mock()
         mock_response.success = False
         self.mock_stub.MakeDirectory.return_value = mock_response
-        
+
         result = self.mf.mkdir("parent-uuid", "test_dir")
-        
+
         self.assertFalse(result)
 
     def test_mkdir_grpc_error(self):
         """Test directory creation with gRPC error."""
         self.mock_stub.MakeDirectory.side_effect = grpc.RpcError("Connection failed")
-        
+
         result = self.mf.mkdir("parent-uuid", "test_dir")
-        
+
         self.assertFalse(result)
 
     def test_touch_success(self):
-        """Test successful file creation."""
+        """Test successful file creation (CreateFile RPC)."""
         # Mock the gRPC response
         mock_response = Mock()
         mock_response.success = True
         mock_response.uid = "test-uuid-456"
-        self.mock_stub.Touch.return_value = mock_response
-        
+        self.mock_stub.CreateFile.return_value = mock_response
+
         result = self.mf.touch("parent-uuid", "test_file.txt")
-        
+
         self.assertEqual(result, "test-uuid-456")
 
     def test_touch_failure(self):
@@ -112,91 +112,103 @@ class TestManagedFiles(unittest.TestCase):
         # Mock the gRPC response
         mock_response = Mock()
         mock_response.success = False
-        self.mock_stub.Touch.return_value = mock_response
-        
+        self.mock_stub.CreateFile.return_value = mock_response
+
         result = self.mf.touch("parent-uuid", "test_file.txt")
-        
+
         self.assertFalse(result)
 
     def test_put_success(self):
-        """Test successful file upload."""
+        """Test successful file write (WriteFile RPC)."""
         # Mock the gRPC response
         mock_response = Mock()
         mock_response.success = True
-        self.mock_stub.PutFile.return_value = mock_response
-        
+        self.mock_stub.WriteFile.return_value = mock_response
+
         result = self.mf.put("file-uuid", b"test content")
-        
+
         self.assertIsInstance(result, float)  # Should return a timestamp
-        self.mock_stub.PutFile.assert_called_once()
+        self.mock_stub.WriteFile.assert_called_once()
 
     def test_put_with_string_content(self):
-        """Test file upload with string content."""
+        """Test file write with string content."""
         # Mock the gRPC response
         mock_response = Mock()
         mock_response.success = True
-        self.mock_stub.PutFile.return_value = mock_response
-        
+        self.mock_stub.WriteFile.return_value = mock_response
+
         result = self.mf.put("file-uuid", "test content")
-        
+
         self.assertIsInstance(result, float)  # Should return a timestamp
         # Verify the string was converted to bytes
-        call_args = self.mock_stub.PutFile.call_args[0][0]
+        call_args = self.mock_stub.WriteFile.call_args[0][0]
         self.assertEqual(call_args.data, b"test content")
 
     def test_put_failure(self):
-        """Test file upload failure."""
+        """Test file write failure."""
         # Mock the gRPC response
         mock_response = Mock()
         mock_response.success = False
-        self.mock_stub.PutFile.return_value = mock_response
-        
+        self.mock_stub.WriteFile.return_value = mock_response
+
         result = self.mf.put("file-uuid", b"test content")
-        
+
         self.assertFalse(result)
 
     def test_get_success(self):
-        """Test successful file download."""
-        # Mock the revisions response
-        with patch.object(self.mf, 'revisions', return_value=[{'version': '1234567890.0'}]):
-            # Mock the gRPC response
+        """Test successful read of the latest version (ReadFile RPC)."""
+        # Mock the ReadFile response (latest version path)
+        mock_response = Mock()
+        mock_response.success = True
+        mock_response.data = b"test content"
+        self.mock_stub.ReadFile.return_value = mock_response
+
+        result = self.mf.get("file-uuid")
+
+        self.assertIsInstance(result, io.BytesIO)
+        self.assertEqual(result.getvalue(), b"test content")
+        self.mock_stub.ReadFile.assert_called_once()
+
+    def test_get_back_version_success(self):
+        """Test reading an older version (ReadVersion RPC)."""
+        with patch.object(self.mf, 'revisions',
+                          return_value=[{'version': '1234567891.0'}, {'version': '1234567890.0'}]):
             mock_response = Mock()
             mock_response.success = True
-            mock_response.data = b"test content"
-            self.mock_stub.GetVersion.return_value = mock_response
-            
-            result = self.mf.get("file-uuid")
-            
-            self.assertIsInstance(result, io.BytesIO)
-            self.assertEqual(result.getvalue(), b"test content")
+            mock_response.data = b"old content"
+            self.mock_stub.ReadVersion.return_value = mock_response
 
-    def test_get_failure_no_revisions(self):
-        """Test file download when no revisions exist."""
-        # Mock the revisions response to return empty list
+            result = self.mf.get("file-uuid", back=1)
+
+            self.assertIsInstance(result, io.BytesIO)
+            self.assertEqual(result.getvalue(), b"old content")
+            self.mock_stub.ReadVersion.assert_called_once()
+
+    def test_get_back_version_no_revisions(self):
+        """Test reading a back version when no revisions exist."""
+        # Requesting an older version with no revisions should fail
         with patch.object(self.mf, 'revisions', return_value=[]):
-            result = self.mf.get("file-uuid")
-            
+            result = self.mf.get("file-uuid", back=1)
+
             self.assertFalse(result)
 
     def test_get_failure_grpc_error(self):
-        """Test file download with gRPC error."""
-        # Mock the revisions response
-        with patch.object(self.mf, 'revisions', return_value=[{'version': '1234567890.0'}]):
-            self.mock_stub.GetVersion.side_effect = grpc.RpcError("Connection failed")
-            
-            result = self.mf.get("file-uuid")
-            
-            self.assertFalse(result)
+        """Test latest-version read with gRPC error."""
+        self.mock_stub.ReadFile.side_effect = grpc.RpcError("Connection failed")
+
+        result = self.mf.get("file-uuid")
+
+        self.assertFalse(result)
 
     def test_entity_exists_true(self):
-        """Test entity exists returns True."""
+        """Test entity exists returns True (FileExists RPC)."""
         # Mock the gRPC response
         mock_response = Mock()
         mock_response.exists = True
-        self.mock_stub.Exists.return_value = mock_response
-        
+        self.mock_stub.FileExists.return_value = mock_response
+
         result = self.mf.entity_exists("entity-uuid")
-        
+
         self.assertTrue(result)
 
     def test_entity_exists_false(self):
@@ -204,54 +216,54 @@ class TestManagedFiles(unittest.TestCase):
         # Mock the gRPC response
         mock_response = Mock()
         mock_response.exists = False
-        self.mock_stub.Exists.return_value = mock_response
-        
+        self.mock_stub.FileExists.return_value = mock_response
+
         result = self.mf.entity_exists("entity-uuid")
-        
+
         self.assertFalse(result)
 
     def test_entity_exists_grpc_error(self):
         """Test entity exists with gRPC error."""
-        self.mock_stub.Exists.side_effect = grpc.RpcError("Connection failed")
-        
+        self.mock_stub.FileExists.side_effect = grpc.RpcError("Connection failed")
+
         result = self.mf.entity_exists("entity-uuid")
-        
+
         self.assertFalse(result)
 
     def test_is_dir_true(self):
-        """Test is_dir returns True for directory."""
+        """Test is_dir returns True for directory (GetFileInfo RPC)."""
         # Mock the gRPC response
         mock_info = Mock()
-        mock_info.type = 1  # FileType.DIRECTORY
+        mock_info.type = 1  # ProtoFileType.PROTO_DIRECTORY
         mock_response = Mock()
         mock_response.success = True
         mock_response.info = mock_info
-        self.mock_stub.Stat.return_value = mock_response
-        
+        self.mock_stub.GetFileInfo.return_value = mock_response
+
         result = self.mf.is_dir("dir-uuid")
-        
+
         self.assertTrue(result)
 
     def test_is_dir_false(self):
         """Test is_dir returns False for file."""
         # Mock the gRPC response
         mock_info = Mock()
-        mock_info.type = 0  # FileType.REGULAR_FILE
+        mock_info.type = 0  # ProtoFileType.PROTO_REGULAR_FILE
         mock_response = Mock()
         mock_response.success = True
         mock_response.info = mock_info
-        self.mock_stub.Stat.return_value = mock_response
-        
+        self.mock_stub.GetFileInfo.return_value = mock_response
+
         result = self.mf.is_dir("file-uuid")
-        
+
         self.assertFalse(result)
 
     def test_is_dir_grpc_error(self):
         """Test is_dir with gRPC error."""
-        self.mock_stub.Stat.side_effect = grpc.RpcError("Connection failed")
-        
+        self.mock_stub.GetFileInfo.side_effect = grpc.RpcError("Connection failed")
+
         result = self.mf.is_dir("entity-uuid")
-        
+
         self.assertFalse(result)
 
     def test_revisions_success(self):
@@ -261,9 +273,9 @@ class TestManagedFiles(unittest.TestCase):
         mock_response.success = True
         mock_response.versions = ["1234567890.0", "1234567891.0"]
         self.mock_stub.ListVersions.return_value = mock_response
-        
+
         result = self.mf.revisions("file-uuid")
-        
+
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]['version'], "1234567890.0")
         self.assertEqual(result[1]['version'], "1234567891.0")
@@ -274,107 +286,107 @@ class TestManagedFiles(unittest.TestCase):
         mock_response = Mock()
         mock_response.success = False
         self.mock_stub.ListVersions.return_value = mock_response
-        
+
         result = self.mf.revisions("file-uuid")
-        
+
         self.assertEqual(result, [])
 
     def test_revisions_grpc_error(self):
         """Test revisions retrieval with gRPC error."""
         self.mock_stub.ListVersions.side_effect = grpc.RpcError("Connection failed")
-        
+
         result = self.mf.revisions("file-uuid")
-        
+
         self.assertEqual(result, [])
 
     def test_remove_file_success(self):
-        """Test successful file removal."""
-        # Mock the Stat response to indicate it's a file
+        """Test successful file removal (DeleteFile RPC)."""
+        # Mock the GetFileInfo response to indicate it's a file
         mock_info = Mock()
-        mock_info.type = 0  # FileType.REGULAR_FILE
-        stat_response = Mock()
-        stat_response.success = True
-        stat_response.info = mock_info
-        self.mock_stub.Stat.return_value = stat_response
-        
-        # Mock the RemoveFile response
+        mock_info.type = 0  # ProtoFileType.PROTO_REGULAR_FILE
+        info_response = Mock()
+        info_response.success = True
+        info_response.info = mock_info
+        self.mock_stub.GetFileInfo.return_value = info_response
+
+        # Mock the DeleteFile response
         remove_response = Mock()
         remove_response.success = True
-        self.mock_stub.RemoveFile.return_value = remove_response
-        
+        self.mock_stub.DeleteFile.return_value = remove_response
+
         result = self.mf.remove("file-uuid")
-        
+
         self.assertTrue(result)
-        self.mock_stub.RemoveFile.assert_called_once()
+        self.mock_stub.DeleteFile.assert_called_once()
 
     def test_remove_directory_success(self):
-        """Test successful directory removal."""
-        # Mock the Stat response to indicate it's a directory
+        """Test successful directory removal (RemoveDirectory RPC)."""
+        # Mock the GetFileInfo response to indicate it's a directory
         mock_info = Mock()
-        mock_info.type = 1  # FileType.DIRECTORY
-        stat_response = Mock()
-        stat_response.success = True
-        stat_response.info = mock_info
-        self.mock_stub.Stat.return_value = stat_response
-        
+        mock_info.type = 1  # ProtoFileType.PROTO_DIRECTORY
+        info_response = Mock()
+        info_response.success = True
+        info_response.info = mock_info
+        self.mock_stub.GetFileInfo.return_value = info_response
+
         # Mock the RemoveDirectory response
         remove_response = Mock()
         remove_response.success = True
         self.mock_stub.RemoveDirectory.return_value = remove_response
-        
+
         result = self.mf.remove("dir-uuid")
-        
+
         self.assertTrue(result)
         self.mock_stub.RemoveDirectory.assert_called_once()
 
     def test_remove_failure(self):
         """Test removal failure."""
-        # Mock the Stat response to indicate it's a file
+        # Mock the GetFileInfo response to indicate it's a file
         mock_info = Mock()
-        mock_info.type = 0  # FileType.REGULAR_FILE
-        stat_response = Mock()
-        stat_response.success = True
-        stat_response.info = mock_info
-        self.mock_stub.Stat.return_value = stat_response
-        
-        # Mock the RemoveFile response as failure
+        mock_info.type = 0  # ProtoFileType.PROTO_REGULAR_FILE
+        info_response = Mock()
+        info_response.success = True
+        info_response.info = mock_info
+        self.mock_stub.GetFileInfo.return_value = info_response
+
+        # Mock the DeleteFile response as failure
         remove_response = Mock()
         remove_response.success = False
-        self.mock_stub.RemoveFile.return_value = remove_response
-        
+        self.mock_stub.DeleteFile.return_value = remove_response
+
         result = self.mf.remove("file-uuid")
-        
+
         self.assertFalse(result)
 
     def test_remove_grpc_error(self):
         """Test removal with gRPC error."""
-        self.mock_stub.Stat.side_effect = grpc.RpcError("Connection failed")
-        
+        self.mock_stub.GetFileInfo.side_effect = grpc.RpcError("Connection failed")
+
         result = self.mf.remove("entity-uuid")
-        
+
         self.assertFalse(result)
 
     def test_rename_success(self):
-        """Test successful rename operation."""
+        """Test successful rename operation (RenameFile RPC)."""
         # Mock the gRPC response
         mock_response = Mock()
         mock_response.success = True
-        self.mock_stub.Rename.return_value = mock_response
-        
+        self.mock_stub.RenameFile.return_value = mock_response
+
         result = self.mf.rename("entity-uuid", "new_name")
-        
+
         self.assertTrue(result)
-        self.mock_stub.Rename.assert_called_once()
+        self.mock_stub.RenameFile.assert_called_once()
 
     def test_rename_failure(self):
         """Test rename operation failure."""
         # Mock the gRPC response
         mock_response = Mock()
         mock_response.success = False
-        self.mock_stub.Rename.return_value = mock_response
-        
+        self.mock_stub.RenameFile.return_value = mock_response
+
         result = self.mf.rename("entity-uuid", "new_name")
-        
+
         self.assertFalse(result)
 
     def test_set_metadata_value_success(self):
@@ -383,9 +395,9 @@ class TestManagedFiles(unittest.TestCase):
         mock_response = Mock()
         mock_response.success = True
         self.mock_stub.SetMetadata.return_value = mock_response
-        
+
         result = self.mf.set_metadata_value("entity-uuid", "key", "value")
-        
+
         self.assertTrue(result)
 
     def test_set_metadata_value_failure(self):
@@ -394,9 +406,9 @@ class TestManagedFiles(unittest.TestCase):
         mock_response = Mock()
         mock_response.success = False
         self.mock_stub.SetMetadata.return_value = mock_response
-        
+
         result = self.mf.set_metadata_value("entity-uuid", "key", "value")
-        
+
         self.assertFalse(result)
 
     def test_get_metadata_value_success(self):
@@ -406,9 +418,9 @@ class TestManagedFiles(unittest.TestCase):
         mock_response.success = True
         mock_response.value = "value"
         self.mock_stub.GetMetadata.return_value = mock_response
-        
+
         result = self.mf.get_metadata_value("entity-uuid", "key")
-        
+
         self.assertEqual(result, "value")
 
     def test_get_metadata_value_failure(self):
@@ -417,10 +429,26 @@ class TestManagedFiles(unittest.TestCase):
         mock_response = Mock()
         mock_response.success = False
         self.mock_stub.GetMetadata.return_value = mock_response
-        
+
         result = self.mf.get_metadata_value("entity-uuid", "key")
-        
+
         self.assertIsNone(result)
+
+    def test_get_metadata_values_success(self):
+        """Test retrieving all metadata (repeated MetadataEntry -> dict)."""
+        # GetAllMetadata returns a repeated MetadataEntry list in the
+        # fileengine protocol; the client flattens it to a dict.
+        mock_response = Mock()
+        mock_response.success = True
+        mock_response.metadata = [
+            Mock(key="author", value="alice"),
+            Mock(key="version", value="1.0"),
+        ]
+        self.mock_stub.GetAllMetadata.return_value = mock_response
+
+        result = self.mf.get_metadata_values("entity-uuid")
+
+        self.assertEqual(result, {"author": "alice", "version": "1.0"})
 
     def test_context_manager(self):
         """Test the context manager functionality."""
@@ -429,10 +457,10 @@ class TestManagedFiles(unittest.TestCase):
                 with ManagedFiles(user_name="test_user", server_address="localhost:50051") as mf:
                     self.assertIsNotNone(mf)
                     # Perform an operation to ensure it works
-                    self.mock_stub.Exists.return_value = Mock(exists=True)
+                    self.mock_stub.FileExists.return_value = Mock(exists=True)
                     result = mf.entity_exists("test-uuid")
                     self.assertTrue(result)
-                
+
                 # Verify close was called
                 self.mock_channel.close.assert_called_once()
 

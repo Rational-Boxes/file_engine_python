@@ -1,8 +1,12 @@
 """
 FileEngine gRPC Client
 
-Provides Python interface to the FileEngine gRPC service with same API
-as the original Python implementation.
+Provides a Python interface to the FileEngine gRPC service.
+
+This client targets the `fileengine` protocol defined in
+``file_engine_cpp/proto/fileservice.proto`` (the C++ FileService server),
+exposing a familiar filesystem-like API backed by the gRPC service, with
+UUID4 file identification and UNIX-timestamp versioning.
 """
 
 import grpc
@@ -19,15 +23,14 @@ from . import fileservice_pb2_grpc
 
 
 class FileType:
-    """File type constants"""
-    REGULAR_FILE = fileservice_pb2.FileType.REGULAR_FILE
-    DIRECTORY = fileservice_pb2.FileType.DIRECTORY
-    SYMLINK = fileservice_pb2.FileType.SYMLINK
+    """File type constants (mirror of the proto ``ProtoFileType`` enum)."""
+    REGULAR_FILE = fileservice_pb2.ProtoFileType.PROTO_REGULAR_FILE
+    DIRECTORY = fileservice_pb2.ProtoFileType.PROTO_DIRECTORY
 
 
 @dataclass
 class FileInfo:
-    """File metadata information"""
+    """File metadata information (mirror of the proto ``ProtoFileInfo``)."""
     uid: str
     path: str
     name: str
@@ -42,7 +45,7 @@ class FileInfo:
 
 @dataclass
 class DirectoryEntry:
-    """Directory entry information"""
+    """Directory entry information."""
     uid: str
     name: str
     type: int
@@ -56,16 +59,18 @@ class FileSystemError(Exception):
 
 class ManagedFiles:
     """
-    Python adapter for FileEngine gRPC service that provides the exact same
-    interface as the original Python ManagedFiles implementation.
+    Python adapter for the FileEngine gRPC service that provides a
+    filesystem-like interface compatible with the original Python
+    ManagedFiles implementation.
 
-    This is a drop-in replacement that uses the C++ gRPC server backend,
-    with UUID4 for file identification and UNIX timestamps for versioning.
+    This is a drop-in replacement that uses the C++ ``fileengine`` gRPC
+    server backend, with UUID4 for file identification and UNIX timestamps
+    for versioning.
     """
 
     def __init__(self, db_interface=None, storage_base: str = None, user_roles: list = None,
                  user_name: str = '', log_access: bool = False, permission_resolver=None,
-                 s3_config: dict = None, server_address: str = "localhost:50051", 
+                 s3_config: dict = None, server_address: str = "localhost:50051",
                  tenant: str = "", user_claims: list = None):
         """
         Initialize ManagedFiles with gRPC client
@@ -148,41 +153,84 @@ class ManagedFiles:
                     # If claim is a tuple (key, value), add it to the map
                     claims_map[claim[0]] = claim[1]
 
-        return fileservice_pb2.AuthenticationContext(
+        return fileservice_pb2.AuthContext(
             user=actual_user,
             roles=actual_roles,
             tenant=actual_tenant,
             claims=claims_map
         )
 
+    @staticmethod
+    def _metadata_to_dict(entries) -> dict:
+        """Convert a repeated ``MetadataEntry`` list into a plain dict."""
+        return {entry.key: entry.value for entry in entries}
+
+    @staticmethod
+    def _to_version_index(version) -> int:
+        """
+        Coerce a version identifier into the int32 index expected by the
+        versioned-metadata RPCs. Accepts ints or timestamp-like strings.
+        """
+        try:
+            return int(version)
+        except (TypeError, ValueError):
+            try:
+                return int(float(version))
+            except (TypeError, ValueError):
+                return 0
+
     # Path/UID conversion methods
 
     def path_to_uid(self, path: str) -> str:
         """
-        Convert path to UID using gRPC service
+        Convert an absolute path to a UID using the gRPC ``ResolvePath`` RPC.
 
         Args:
-            path: File path
+            path: Absolute file path
 
         Returns:
             UID corresponding to path, or None if not found
         """
-        # Note: The current proto doesn't have a path_to_uid method, so this would need to be implemented
-        # in the gRPC service. For now, returning None as a placeholder.
-        return None
+        try:
+            request = fileservice_pb2.ResolvePathRequest(
+                path=path,
+                auth=self._create_auth_context()
+            )
+            response = self.stub.ResolvePath(request)
+            if response.success:
+                return response.uid
+            return None
+        except grpc.RpcError:
+            return None
+
+    def resolve_path(self, path: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
+        """
+        Resolve an absolute path to its UID and type.
+
+        Returns:
+            A dict ``{'uid': str, 'type': int}`` on success, or None on error.
+        """
+        auth_context = self._create_auth_context(user, tenant, roles, claims)
+
+        try:
+            request = fileservice_pb2.ResolvePathRequest(
+                path=path,
+                auth=auth_context
+            )
+            response = self.stub.ResolvePath(request)
+            if response.success:
+                return {'uid': response.uid, 'type': response.type}
+            return None
+        except grpc.RpcError:
+            return None
 
     def uid_to_path(self, uid: str) -> list:
         """
-        Convert UID to path components
+        Convert UID to path components.
 
-        Args:
-            uid: File UID
-
-        Returns:
-            List of path components
+        Note: The ``fileengine`` protocol does not expose a reverse
+        (UID -> path) operation, so this returns an empty list.
         """
-        # Note: The current proto doesn't have a uid_to_path method, so this would need to be implemented
-        # in the gRPC service. For now, returning empty list as a placeholder.
         return []
 
     # Directory operations
@@ -220,20 +268,11 @@ class ManagedFiles:
 
     def mkdir_path(self, path: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> str:
         """
-        Create directory path recursively
+        Create directory path recursively.
 
-        Args:
-            path: Path to create
-            user: User performing the operation (defaults to self.user)
-            tenant: Tenant identifier (defaults to instance tenant)
-            roles: User roles for permissions (defaults to instance roles)
-            claims: User claims for permissions (defaults to instance claims)
-
-        Returns:
-            UID of last directory created, or False on error
+        Note: Recursive path creation requires path resolution semantics not
+        provided as a single RPC; this remains a placeholder returning False.
         """
-        # This would require path_to_uid functionality which is not in the current proto
-        # For now, this is a simplified implementation that assumes you know the parent UIDs
         return False
 
     def dir(self, uid, show_deleted: bool = False, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> List[dict]:
@@ -242,7 +281,7 @@ class ManagedFiles:
 
         Args:
             uid: Directory UID
-            show_deleted: Show deleted items (not implemented in gRPC service)
+            show_deleted: Include deleted items in the listing
             user: User performing the operation (defaults to self.user)
             tenant: Tenant identifier (defaults to instance tenant)
             roles: User roles for permissions (defaults to instance roles)
@@ -254,46 +293,37 @@ class ManagedFiles:
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            # Use different request based on show_deleted flag
-            if show_deleted:
-                request = fileservice_pb2.ListDirectoryWithDeletedRequest(
-                    uid=uid,
-                    auth=auth_context
-                )
-                response = self.stub.ListDirectoryWithDeleted(request)
-            else:
-                request = fileservice_pb2.ListDirectoryRequest(
-                    uid=uid,
-                    auth=auth_context
-                )
-                response = self.stub.ListDirectory(request)
+            request = fileservice_pb2.ListDirectoryRequest(
+                uid=uid,
+                auth=auth_context,
+                include_deleted=show_deleted
+            )
+            response = self.stub.ListDirectory(request)
 
             if not response.success:
                 return False
 
             result = []
             for entry in response.entries:
-                # Get full path for this entry (placeholder implementation)
-                # In a real implementation, we'd need to get the path from the service
                 item = {
                     'uid': entry.uid,
                     'name': entry.name,
                     'creator': auth_context.user,  # gRPC service doesn't track creator separately
-                    'is_container': 'True' if entry.type == fileservice_pb2.FileType.DIRECTORY else 'False'
+                    'is_container': 'True' if entry.type == fileservice_pb2.ProtoFileType.PROTO_DIRECTORY else 'False'
                 }
 
                 # For files, add version and modification time information
-                if entry.type == fileservice_pb2.FileType.REGULAR_FILE:
-                    revisions = self.revisions(entry.uid, user=auth_context.user, 
-                                              tenant=auth_context.tenant, 
-                                              roles=auth_context.roles, 
+                if entry.type == fileservice_pb2.ProtoFileType.PROTO_REGULAR_FILE:
+                    revisions = self.revisions(entry.uid, user=auth_context.user,
+                                              tenant=auth_context.tenant,
+                                              roles=auth_context.roles,
                                               claims=list(auth_context.claims.keys()))
                     if revisions:
                         item['uploading_user'] = auth_context.user  # gRPC service doesn't track per-version user
                         item['version'] = revisions[0]['version']  # Latest version timestamp
-                        item['mtime'] = self.get_file_mtime(entry.uid, user=auth_context.user, 
-                                                           tenant=auth_context.tenant, 
-                                                           roles=auth_context.roles, 
+                        item['mtime'] = self.get_file_mtime(entry.uid, user=auth_context.user,
+                                                           tenant=auth_context.tenant,
+                                                           roles=auth_context.roles,
                                                            claims=list(auth_context.claims.keys()))
 
                 result.append(item)
@@ -316,11 +346,11 @@ class ManagedFiles:
             True if exists, False otherwise
         """
         try:
-            request = fileservice_pb2.ExistsRequest(
+            request = fileservice_pb2.FileExistsRequest(
                 uid=entity_uid,
                 auth=self._create_auth_context()
             )
-            response = self.stub.Exists(request)
+            response = self.stub.FileExists(request)
             return response.exists
         except grpc.RpcError:
             return False
@@ -328,15 +358,15 @@ class ManagedFiles:
     def is_dir(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """Check if entity is a directory"""
         auth_context = self._create_auth_context(user, tenant, roles, claims)
-        
+
         try:
-            request = fileservice_pb2.StatRequest(
+            request = fileservice_pb2.GetFileInfoRequest(
                 uid=uid,
                 auth=auth_context
             )
-            response = self.stub.Stat(request)
+            response = self.stub.GetFileInfo(request)
             if response.success:
-                return response.info.type == fileservice_pb2.FileType.DIRECTORY
+                return response.info.type == fileservice_pb2.ProtoFileType.PROTO_DIRECTORY
             else:
                 return False
         except grpc.RpcError:
@@ -360,12 +390,12 @@ class ManagedFiles:
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            request = fileservice_pb2.TouchRequest(
+            request = fileservice_pb2.CreateFileRequest(
                 parent_uid=container_uuid,
                 name=name,
                 auth=auth_context
             )
-            response = self.stub.Touch(request)
+            response = self.stub.CreateFile(request)
             if response.success:
                 return response.uid
             else:
@@ -401,12 +431,12 @@ class ManagedFiles:
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            request = fileservice_pb2.PutFileRequest(
+            request = fileservice_pb2.WriteFileRequest(
                 uid=uid,
                 auth=auth_context,
                 data=payload
             )
-            response = self.stub.PutFile(request)
+            response = self.stub.WriteFile(request)
             if response.success:
                 # Return current timestamp as version identifier
                 return time.time()
@@ -432,7 +462,26 @@ class ManagedFiles:
         """
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
-        # Get available versions
+        # For the latest version, read directly via ReadFile.
+        if back == 0:
+            try:
+                request = fileservice_pb2.ReadFileRequest(
+                    uid=uid,
+                    auth=auth_context
+                )
+                response = self.stub.ReadFile(request)
+                if not response.success:
+                    return False
+
+                import io
+                data_buffer = io.BytesIO()
+                data_buffer.write(response.data)
+                data_buffer.seek(0)
+                return data_buffer
+            except grpc.RpcError:
+                return False
+
+        # For older versions, resolve the timestamp then read that version.
         versions = self.revisions(uid, user=auth_context.user,
                                  tenant=auth_context.tenant,
                                  roles=auth_context.roles,
@@ -440,28 +489,24 @@ class ManagedFiles:
         if not versions or len(versions) <= back:
             return False
 
-        # Get the specific version
         version_timestamp = versions[back]['version']
 
         try:
-            request = fileservice_pb2.GetVersionRequest(
+            request = fileservice_pb2.ReadVersionRequest(
                 uid=uid,
                 version_timestamp=version_timestamp,
                 auth=auth_context
             )
 
-            # Create a file-like object in memory
             import io
             data_buffer = io.BytesIO()
 
-            # Get the specific version
-            response = self.stub.GetVersion(request)
+            response = self.stub.ReadVersion(request)
             if response.success:
                 data_buffer.write(response.data)
             else:
                 return False
 
-            # Seek back to start
             data_buffer.seek(0)
             return data_buffer
         except grpc.RpcError:
@@ -496,7 +541,7 @@ class ManagedFiles:
                 result = []
                 for version_timestamp in response.versions:
                     result.append({
-                        'version': version_timestamp,  # Now a string timestamp
+                        'version': version_timestamp,  # String timestamp
                         'name': uid.split('-')[-1] if '-' in uid else uid,  # Extract from UUID-based name
                         'user': auth_context.user  # Backend doesn't track per-version user
                     })
@@ -513,11 +558,11 @@ class ManagedFiles:
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            request = fileservice_pb2.StatRequest(
+            request = fileservice_pb2.GetFileInfoRequest(
                 uid=uid,
                 auth=auth_context
             )
-            response = self.stub.Stat(request)
+            response = self.stub.GetFileInfo(request)
             if response.success:
                 return datetime.fromtimestamp(response.info.modified_at)
             else:
@@ -530,11 +575,11 @@ class ManagedFiles:
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            request = fileservice_pb2.StatRequest(
+            request = fileservice_pb2.GetFileInfoRequest(
                 uid=uid,
                 auth=auth_context
             )
-            response = self.stub.Stat(request)
+            response = self.stub.GetFileInfo(request)
             if response.success:
                 return datetime.fromtimestamp(response.info.created_at)
             else:
@@ -547,11 +592,11 @@ class ManagedFiles:
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            request = fileservice_pb2.StatRequest(
+            request = fileservice_pb2.GetFileInfoRequest(
                 uid=uid,
                 auth=auth_context
             )
-            response = self.stub.Stat(request)
+            response = self.stub.GetFileInfo(request)
             if response.success:
                 return [response.info.name]
             else:
@@ -560,9 +605,12 @@ class ManagedFiles:
             return []
 
     def get_parent(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
-        """Get parent UID - not directly supported in current gRPC interface"""
-        # This would require a new method in the gRPC service
-        # For now, return empty string as placeholder, but accept the parameters for consistency
+        """
+        Get parent UID.
+
+        Note: The ``fileengine`` protocol's ``ProtoFileInfo`` does not carry a
+        parent reference, so this returns an empty string.
+        """
         return ""
 
     # File manipulation
@@ -586,18 +634,16 @@ class ManagedFiles:
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            # If new_name is provided, we need to rename after moving
-            request = fileservice_pb2.MoveRequest(
+            request = fileservice_pb2.MoveFileRequest(
                 source_uid=source_uid,
-                destination_parent_uid=destination_uid,
+                destination_uid=destination_uid,
                 auth=auth_context
             )
-            response = self.stub.Move(request)
-            
+            response = self.stub.MoveFile(request)
+
             # If we need to rename, do that after the move
             if response.success and new_name:
-                rename_response = self.rename(source_uid, new_name, user=user, tenant=tenant, roles=roles, claims=claims)
-                return rename_response
+                return self.rename(source_uid, new_name, user=user, tenant=tenant, roles=roles, claims=claims)
             else:
                 return response.success
         except grpc.RpcError:
@@ -621,12 +667,12 @@ class ManagedFiles:
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            request = fileservice_pb2.CopyRequest(
+            request = fileservice_pb2.CopyFileRequest(
                 source_uid=source_uid,
-                destination_parent_uid=destination_uid,
+                destination_uid=destination_uid,
                 auth=auth_context
             )
-            response = self.stub.Copy(request)
+            response = self.stub.CopyFile(request)
             return response.success
         except grpc.RpcError:
             return False
@@ -649,13 +695,13 @@ class ManagedFiles:
 
         try:
             # Determine if it's a file or directory to use appropriate request
-            info_req = fileservice_pb2.StatRequest(
+            info_req = fileservice_pb2.GetFileInfoRequest(
                 uid=uid,
                 auth=auth_context
             )
-            info_resp = self.stub.Stat(info_req)
+            info_resp = self.stub.GetFileInfo(info_req)
 
-            if info_resp.success and info_resp.info.type == fileservice_pb2.FileType.DIRECTORY:
+            if info_resp.success and info_resp.info.type == fileservice_pb2.ProtoFileType.PROTO_DIRECTORY:
                 # It's a directory
                 request = fileservice_pb2.RemoveDirectoryRequest(
                     uid=uid,
@@ -664,11 +710,11 @@ class ManagedFiles:
                 response = self.stub.RemoveDirectory(request)
             else:
                 # It's a file
-                request = fileservice_pb2.RemoveFileRequest(
+                request = fileservice_pb2.DeleteFileRequest(
                     uid=uid,
                     auth=auth_context
                 )
-                response = self.stub.RemoveFile(request)
+                response = self.stub.DeleteFile(request)
 
             return response.success
         except grpc.RpcError:
@@ -692,12 +738,12 @@ class ManagedFiles:
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            request = fileservice_pb2.RenameRequest(
+            request = fileservice_pb2.RenameFileRequest(
                 uid=uid,
                 new_name=new_name,
                 auth=auth_context
             )
-            response = self.stub.Rename(request)
+            response = self.stub.RenameFile(request)
             return response.success
         except grpc.RpcError:
             return False
@@ -773,7 +819,7 @@ class ManagedFiles:
             uid: File/directory UID
             user: User performing operation (defaults to self.user)
             tenant: Tenant identifier (defaults to instance tenant)
-            roles: User roles for permissions (defaults to instance claims)
+            roles: User roles for permissions (defaults to instance roles)
             claims: User claims for permissions (defaults to instance claims)
 
         Returns:
@@ -788,7 +834,7 @@ class ManagedFiles:
             )
             response = self.stub.GetAllMetadata(request)
             if response.success:
-                return dict(response.metadata)
+                return self._metadata_to_dict(response.metadata)
             else:
                 return {}
         except grpc.RpcError:
@@ -824,13 +870,13 @@ class ManagedFiles:
 
     # Helper methods for additional functionality
 
-    def get_metadata_for_version(self, uid: str, version: str, key: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
+    def get_metadata_for_version(self, uid: str, version, key: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
         """
-        Get metadata value for specific version of a file
+        Get metadata value for a specific version of a file
 
         Args:
             uid: File UID
-            version: Version timestamp
+            version: Version index (the proto field is an int32 ``version``)
             key: Metadata key
             user: User performing operation (defaults to self.user)
             tenant: Tenant identifier (defaults to instance tenant)
@@ -845,7 +891,7 @@ class ManagedFiles:
         try:
             request = fileservice_pb2.GetMetadataForVersionRequest(
                 uid=uid,
-                version_timestamp=version,
+                version=self._to_version_index(version),
                 key=key,
                 auth=auth_context
             )
@@ -857,13 +903,13 @@ class ManagedFiles:
         except grpc.RpcError:
             return None
 
-    def get_all_metadata_for_version(self, uid: str, version: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> dict:
+    def get_all_metadata_for_version(self, uid: str, version, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> dict:
         """
-        Get all metadata for specific version of a file
+        Get all metadata for a specific version of a file
 
         Args:
             uid: File UID
-            version: Version timestamp
+            version: Version index (the proto field is an int32 ``version``)
             user: User performing operation (defaults to self.user)
             tenant: Tenant identifier (defaults to instance tenant)
             roles: User roles for permissions (defaults to instance roles)
@@ -877,12 +923,12 @@ class ManagedFiles:
         try:
             request = fileservice_pb2.GetAllMetadataForVersionRequest(
                 uid=uid,
-                version_timestamp=version,
+                version=self._to_version_index(version),
                 auth=auth_context
             )
             response = self.stub.GetAllMetadataForVersion(request)
             if response.success:
-                return dict(response.metadata)
+                return self._metadata_to_dict(response.metadata)
             else:
                 return {}
         except grpc.RpcError:
@@ -890,182 +936,97 @@ class ManagedFiles:
 
     # Permission and ACL operations
 
-    def grant_permission(self, resource_uid: str, principal: str, permission: int, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+    def evaluate_acl(self, resource_uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> list:
         """
-        Grant permission to a principal on a resource
+        Evaluate the effective permissions for the current principal on a
+        resource via the ``EvaluateACL`` RPC.
 
         Args:
-            resource_uid: Resource UUID to grant permission on
-            principal: User or group name
-            permission: Permission to grant (from fileservice_pb2.Permission)
-            user: User performing the operation (defaults to self.user)
-            tenant: Tenant identifier (defaults to instance tenant)
-            roles: User roles for permissions (defaults to instance roles)
-            claims: User claims for permissions (defaults to instance claims)
+            resource_uid: Resource UUID to evaluate
 
         Returns:
-            True on success, False on error
+            List of permission strings granted to the principal, or [] on error
         """
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            request = fileservice_pb2.GrantPermissionRequest(
-                resource_uid=resource_uid,
-                principal=principal,
-                permission=permission,
+            request = fileservice_pb2.EvaluateACLRequest(
+                uid=resource_uid,
                 auth=auth_context
             )
-            response = self.stub.GrantPermission(request)
-            return response.success
+            response = self.stub.EvaluateACL(request)
+            if response.success:
+                return list(response.permissions)
+            return []
         except grpc.RpcError:
-            return False
+            return []
 
-    def revoke_permission(self, resource_uid: str, principal: str, permission: int, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+    def check_permission(self, resource_uid: str, required_permission, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
-        Revoke permission from a principal on a resource
+        Check whether the current principal holds a permission on a resource.
+
+        The ``fileengine`` protocol exposes permission evaluation through
+        ``EvaluateACL`` (which returns permission strings), so this checks
+        membership of ``required_permission`` in the evaluated permission set.
 
         Args:
-            resource_uid: Resource UUID to revoke permission from
-            principal: User or group name
-            permission: Permission to revoke (from fileservice_pb2.Permission)
-            user: User performing the operation (defaults to self.user)
-            tenant: Tenant identifier (defaults to instance tenant)
-            roles: User roles for permissions (defaults to instance roles)
-            claims: User claims for permissions (defaults to instance claims)
+            resource_uid: Resource UUID to check
+            required_permission: Permission name (string), e.g. "read"/"write"
 
         Returns:
-            True on success, False on error
+            True if the permission is present, False otherwise
         """
-        auth_context = self._create_auth_context(user, tenant, roles, claims)
+        permissions = self.evaluate_acl(resource_uid, user=user, tenant=tenant, roles=roles, claims=claims)
+        return str(required_permission) in permissions
 
-        try:
-            request = fileservice_pb2.RevokePermissionRequest(
-                resource_uid=resource_uid,
-                principal=principal,
-                permission=permission,
-                auth=auth_context
-            )
-            response = self.stub.RevokePermission(request)
-            return response.success
-        except grpc.RpcError:
-            return False
-
-    def check_permission(self, resource_uid: str, required_permission: int, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+    def grant_permission(self, resource_uid: str, principal: str, permission, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
-        Check if a user has a specific permission on a resource
+        Grant a permission to a principal on a resource.
 
-        Args:
-            resource_uid: Resource UUID to check permission on
-            required_permission: Required permission (from fileservice_pb2.Permission)
-            user: User to check permission for (defaults to self.user)
-            tenant: Tenant identifier (defaults to instance tenant)
-            roles: User roles for permissions (defaults to instance roles)
-            claims: User claims for permissions (defaults to instance claims)
-
-        Returns:
-            True if user has permission, False otherwise
+        Note: The ``fileengine`` protocol is read-only with respect to ACLs
+        (only ``EvaluateACL`` is exposed); ACL mutation is managed outside this
+        service. This method is retained for API compatibility and returns
+        False.
         """
-        auth_context = self._create_auth_context(user, tenant, roles, claims)
+        return False
 
-        try:
-            request = fileservice_pb2.CheckPermissionRequest(
-                resource_uid=resource_uid,
-                required_permission=required_permission,
-                auth=auth_context
-            )
-            response = self.stub.CheckPermission(request)
-            return response.has_permission
-        except grpc.RpcError:
-            return False
+    def revoke_permission(self, resource_uid: str, principal: str, permission, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+        """
+        Revoke a permission from a principal on a resource.
+
+        Note: Not supported by the ``fileengine`` protocol (see
+        :meth:`grant_permission`). Retained for compatibility; returns False.
+        """
+        return False
 
     # Status and administrative operations
 
     def get_storage_usage(self, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> dict:
         """
-        Get storage usage information
+        Get storage usage information.
 
-        Args:
-            user: User performing the operation (defaults to self.user)
-            tenant: Tenant identifier (defaults to instance tenant, or specific tenant if provided)
-            roles: User roles for permissions (defaults to instance roles)
-            claims: User claims for permissions (defaults to instance claims)
-
-        Returns:
-            Dictionary with storage usage information, or None on error
+        Note: Not exposed by the ``fileengine`` protocol; retained for
+        compatibility and returns None.
         """
-        auth_context = self._create_auth_context(user, tenant, roles, claims)
-
-        try:
-            request = fileservice_pb2.StorageUsageRequest(
-                auth=auth_context,
-                tenant=tenant if tenant else self.tenant
-            )
-            response = self.stub.GetStorageUsage(request)
-
-            if response.success:
-                return {
-                    'total_space': response.total_space,
-                    'used_space': response.used_space,
-                    'available_space': response.available_space,
-                    'usage_percentage': response.usage_percentage
-                }
-            else:
-                return None
-        except grpc.RpcError:
-            return None
+        return None
 
     def purge_old_versions(self, file_uid: str, keep_count: int, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
-        Purge old versions of a file, keeping only the specified number
+        Purge old versions of a file.
 
-        Args:
-            file_uid: File UUID to purge old versions for
-            keep_count: Number of versions to keep
-            user: User performing the operation (defaults to self.user)
-            tenant: Tenant identifier (defaults to instance tenant)
-            roles: User roles for permissions (defaults to instance roles)
-            claims: User claims for permissions (defaults to instance claims)
-
-        Returns:
-            True on success, False on error
+        Note: Not exposed by the ``fileengine`` protocol; retained for
+        compatibility and returns False.
         """
-        auth_context = self._create_auth_context(user, tenant, roles, claims)
-
-        try:
-            request = fileservice_pb2.PurgeOldVersionsRequest(
-                uid=file_uid,
-                keep_count=keep_count,
-                auth=auth_context
-            )
-            response = self.stub.PurgeOldVersions(request)
-            return response.success
-        except grpc.RpcError:
-            return False
+        return False
 
     def trigger_sync(self, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
-        Trigger synchronization between local and remote storage
+        Trigger synchronization between local and remote storage.
 
-        Args:
-            user: User performing the operation (defaults to self.user)
-            tenant: Tenant to sync (defaults to instance tenant, or all if empty)
-            roles: User roles for permissions (defaults to instance roles)
-            claims: User claims for permissions (defaults to instance claims)
-
-        Returns:
-            True on success, False on error
+        Note: Not exposed by the ``fileengine`` protocol; retained for
+        compatibility and returns False.
         """
-        auth_context = self._create_auth_context(user, tenant, roles, claims)
-
-        try:
-            request = fileservice_pb2.TriggerSyncRequest(
-                tenant=tenant if tenant else self.tenant,
-                auth=auth_context
-            )
-            response = self.stub.TriggerSync(request)
-            return response.success
-        except grpc.RpcError:
-            return False
+        return False
 
     def undelete_file(self, file_uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
@@ -1095,7 +1056,11 @@ class ManagedFiles:
 
     def restore_to_version(self, file_uid: str, version_timestamp: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> str:
         """
-        Restore a file to a specific version
+        Restore a file to a specific version.
+
+        The ``fileengine`` protocol has no dedicated restore RPC, so this is
+        emulated by reading the requested version and writing it back as a new
+        current version (``ReadVersion`` + ``WriteFile``).
 
         Args:
             file_uid: File UUID to restore
@@ -1106,60 +1071,60 @@ class ManagedFiles:
             claims: User claims for permissions (defaults to instance claims)
 
         Returns:
-            Timestamp of the version restored to, or None on error
+            Timestamp string of the newly written version, or None on error
         """
         auth_context = self._create_auth_context(user, tenant, roles, claims)
 
         try:
-            request = fileservice_pb2.RestoreToVersionRequest(
+            read_req = fileservice_pb2.ReadVersionRequest(
                 uid=file_uid,
                 version_timestamp=version_timestamp,
                 auth=auth_context
             )
-            response = self.stub.RestoreToVersion(request)
-
-            if response.success:
-                return response.restored_version
-            else:
+            read_resp = self.stub.ReadVersion(read_req)
+            if not read_resp.success:
                 return None
+
+            write_req = fileservice_pb2.WriteFileRequest(
+                uid=file_uid,
+                auth=auth_context,
+                data=read_resp.data
+            )
+            write_resp = self.stub.WriteFile(write_req)
+            if write_resp.success:
+                return str(time.time())
+            return None
         except grpc.RpcError:
             return None
 
     # Permission methods (stubs - for compatibility with original interface)
 
     def assign_entity_to_permissions(self, entity_uid: str, role_name: str) -> bool:
-        """Assign permission role to entity (deprecated - use grant_permission instead)"""
-        # This is a legacy method for compatibility - use grant_permission instead
+        """Assign permission role to entity (deprecated - not supported by the fileengine protocol)"""
         return False
 
     def create_permission_role(self, role_name: str, can_read: bool = False, can_write: bool = False,
                                can_delete: bool = False, can_get_revisions: bool = False) -> bool:
-        """Create permission role (deprecated - use grant_permission instead)"""
-        # This is a legacy method for compatibility - use grant_permission instead
+        """Create permission role (deprecated - not supported by the fileengine protocol)"""
         return False
 
     def update_permission_role(self, role_name: str, can_read: bool = None, can_write: bool = None,
                                can_delete: bool = None, can_get_revisions: bool = None) -> bool:
-        """Update permission role (deprecated - use grant_permission instead)"""
-        # This is a legacy method for compatibility - use grant_permission instead
+        """Update permission role (deprecated - not supported by the fileengine protocol)"""
         return False
 
     def delete_permission_role(self, role_name: str) -> bool:
-        """Delete permission role (deprecated - use revoke_permission instead)"""
-        # This is a legacy method for compatibility - use revoke_permission instead
+        """Delete permission role (deprecated - not supported by the fileengine protocol)"""
         return False
 
     def remove_entity_from_permissions(self, entity_uid: str, role_name: str) -> bool:
-        """Remove permission assignment from entity (deprecated - use revoke_permission instead)"""
-        # This is a legacy method for compatibility - use revoke_permission instead
+        """Remove permission assignment from entity (deprecated - not supported by the fileengine protocol)"""
         return False
 
     def get_permission_roles(self) -> list:
         """Get permission roles (deprecated)"""
-        # This is a legacy method for compatibility
         return []
 
     def get_entity_permissions(self, entity_uid: str) -> list:
         """Get entity permissions (deprecated)"""
-        # This is a legacy method for compatibility
         return []

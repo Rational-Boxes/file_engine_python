@@ -5,14 +5,21 @@ from fileengine.client import ManagedFiles
 
 
 class TestPermissionAndStatusOperations(unittest.TestCase):
-    """Test the new permission and status operations"""
+    """Test permission and status operations against the fileengine protocol.
+
+    The fileengine protocol (file_engine_cpp) exposes ACL *evaluation* only
+    (EvaluateACL) plus UndeleteFile. Permission mutation (grant/revoke),
+    storage usage, version purging and sync are not part of the protocol, so
+    the client keeps them as compatibility no-ops; restore-to-version is
+    emulated via ReadVersion + WriteFile.
+    """
 
     def setUp(self):
         """Set up test fixtures before each test method."""
         # Mock the gRPC channel and stub
         self.mock_channel = Mock()
         self.mock_stub = Mock()
-        
+
         # Patch the gRPC channel creation
         with patch('fileengine.client.grpc.insecure_channel', return_value=self.mock_channel):
             with patch('fileengine.client.fileservice_pb2_grpc.FileServiceStub', return_value=self.mock_stub):
@@ -23,7 +30,7 @@ class TestPermissionAndStatusOperations(unittest.TestCase):
                     server_address="localhost:50051",
                     tenant="test_tenant"
                 )
-                
+
                 # Set the stub on the instance
                 self.mf.stub = self.mock_stub
 
@@ -31,174 +38,144 @@ class TestPermissionAndStatusOperations(unittest.TestCase):
         """Clean up after each test method."""
         self.mf.close()
 
-    def test_grant_permission_success(self):
-        """Test successful permission grant."""
-        # Mock the gRPC response
+    # --- ACL evaluation (EvaluateACL) ---
+
+    def test_evaluate_acl_success(self):
+        """Test evaluating effective permissions for a resource."""
         mock_response = Mock()
         mock_response.success = True
-        self.mock_stub.GrantPermission.return_value = mock_response
-        
-        result = self.mf.grant_permission("resource-uuid", "test_user", 0)  # 0 = READ permission
-        
+        mock_response.permissions = ["read", "write"]
+        self.mock_stub.EvaluateACL.return_value = mock_response
+
+        result = self.mf.evaluate_acl("resource-uuid")
+
+        self.assertEqual(result, ["read", "write"])
+        self.mock_stub.EvaluateACL.assert_called_once()
+
+    def test_evaluate_acl_grpc_error(self):
+        """Test ACL evaluation with gRPC error returns empty list."""
+        self.mock_stub.EvaluateACL.side_effect = grpc.RpcError("Connection failed")
+
+        result = self.mf.evaluate_acl("resource-uuid")
+
+        self.assertEqual(result, [])
+
+    def test_check_permission_true(self):
+        """check_permission returns True when the permission is present."""
+        mock_response = Mock()
+        mock_response.success = True
+        mock_response.permissions = ["read", "write"]
+        self.mock_stub.EvaluateACL.return_value = mock_response
+
+        result = self.mf.check_permission("resource-uuid", "read")
+
         self.assertTrue(result)
-        self.mock_stub.GrantPermission.assert_called_once()
 
-    def test_grant_permission_failure(self):
-        """Test permission grant failure."""
-        # Mock the gRPC response
-        mock_response = Mock()
-        mock_response.success = False
-        self.mock_stub.GrantPermission.return_value = mock_response
-        
-        result = self.mf.grant_permission("resource-uuid", "test_user", 0)
-        
-        self.assertFalse(result)
-
-    def test_grant_permission_grpc_error(self):
-        """Test permission grant with gRPC error."""
-        self.mock_stub.GrantPermission.side_effect = grpc.RpcError("Connection failed")
-        
-        result = self.mf.grant_permission("resource-uuid", "test_user", 0)
-        
-        self.assertFalse(result)
-
-    def test_revoke_permission_success(self):
-        """Test successful permission revoke."""
-        # Mock the gRPC response
+    def test_check_permission_false(self):
+        """check_permission returns False when the permission is absent."""
         mock_response = Mock()
         mock_response.success = True
-        self.mock_stub.RevokePermission.return_value = mock_response
-        
-        result = self.mf.revoke_permission("resource-uuid", "test_user", 0)
-        
-        self.assertTrue(result)
-        self.mock_stub.RevokePermission.assert_called_once()
+        mock_response.permissions = ["read"]
+        self.mock_stub.EvaluateACL.return_value = mock_response
 
-    def test_revoke_permission_failure(self):
-        """Test permission revoke failure."""
-        # Mock the gRPC response
-        mock_response = Mock()
-        mock_response.success = False
-        self.mock_stub.RevokePermission.return_value = mock_response
-        
-        result = self.mf.revoke_permission("resource-uuid", "test_user", 0)
-        
+        result = self.mf.check_permission("resource-uuid", "write")
+
         self.assertFalse(result)
 
-    def test_check_permission_success(self):
-        """Test successful permission check."""
-        # Mock the gRPC response
-        mock_response = Mock()
-        mock_response.success = True
-        mock_response.has_permission = True
-        self.mock_stub.CheckPermission.return_value = mock_response
-        
-        result = self.mf.check_permission("resource-uuid", 0)
-        
-        self.assertTrue(result)
-        self.mock_stub.CheckPermission.assert_called_once()
+    # --- ACL mutation: not in protocol, kept as compatibility no-ops ---
 
-    def test_check_permission_failure(self):
-        """Test permission check failure."""
-        # Mock the gRPC response
-        mock_response = Mock()
-        mock_response.success = True
-        mock_response.has_permission = False
-        self.mock_stub.CheckPermission.return_value = mock_response
-        
-        result = self.mf.check_permission("resource-uuid", 0)
-        
+    def test_grant_permission_not_supported(self):
+        """grant_permission is not part of the protocol; returns False."""
+        result = self.mf.grant_permission("resource-uuid", "test_user", "read")
+
         self.assertFalse(result)
+        self.mock_stub.GrantPermission.assert_not_called()
 
-    def test_get_storage_usage_success(self):
-        """Test successful storage usage retrieval."""
-        # Mock the gRPC response
-        mock_response = Mock()
-        mock_response.success = True
-        mock_response.total_space = 1000000000  # 1GB
-        mock_response.used_space = 500000000   # 500MB
-        mock_response.available_space = 500000000  # 500MB
-        mock_response.usage_percentage = 50.0
-        self.mock_stub.GetStorageUsage.return_value = mock_response
-        
+    def test_revoke_permission_not_supported(self):
+        """revoke_permission is not part of the protocol; returns False."""
+        result = self.mf.revoke_permission("resource-uuid", "test_user", "read")
+
+        self.assertFalse(result)
+        self.mock_stub.RevokePermission.assert_not_called()
+
+    # --- Administrative ops: not in protocol, kept as compatibility no-ops ---
+
+    def test_get_storage_usage_not_supported(self):
+        """get_storage_usage is not part of the protocol; returns None."""
         result = self.mf.get_storage_usage()
-        
-        self.assertIsNotNone(result)
-        self.assertEqual(result['total_space'], 1000000000)
-        self.assertEqual(result['used_space'], 500000000)
-        self.assertEqual(result['available_space'], 500000000)
-        self.assertEqual(result['usage_percentage'], 50.0)
 
-    def test_get_storage_usage_failure(self):
-        """Test storage usage retrieval failure."""
-        # Mock the gRPC response
-        mock_response = Mock()
-        mock_response.success = False
-        self.mock_stub.GetStorageUsage.return_value = mock_response
-        
-        result = self.mf.get_storage_usage()
-        
         self.assertIsNone(result)
+        self.mock_stub.GetStorageUsage.assert_not_called()
 
-    def test_purge_old_versions_success(self):
-        """Test successful purging of old versions."""
-        # Mock the gRPC response
-        mock_response = Mock()
-        mock_response.success = True
-        self.mock_stub.PurgeOldVersions.return_value = mock_response
-        
+    def test_purge_old_versions_not_supported(self):
+        """purge_old_versions is not part of the protocol; returns False."""
         result = self.mf.purge_old_versions("file-uuid", 5)
-        
-        self.assertTrue(result)
-        self.mock_stub.PurgeOldVersions.assert_called_once()
 
-    def test_trigger_sync_success(self):
-        """Test successful sync trigger."""
-        # Mock the gRPC response
-        mock_response = Mock()
-        mock_response.success = True
-        self.mock_stub.TriggerSync.return_value = mock_response
-        
+        self.assertFalse(result)
+        self.mock_stub.PurgeOldVersions.assert_not_called()
+
+    def test_trigger_sync_not_supported(self):
+        """trigger_sync is not part of the protocol; returns False."""
         result = self.mf.trigger_sync()
-        
-        self.assertTrue(result)
-        self.mock_stub.TriggerSync.assert_called_once()
+
+        self.assertFalse(result)
+        self.mock_stub.TriggerSync.assert_not_called()
+
+    # --- Undelete (UndeleteFile) ---
 
     def test_undelete_file_success(self):
         """Test successful file undeletion."""
-        # Mock the gRPC response
         mock_response = Mock()
         mock_response.success = True
         self.mock_stub.UndeleteFile.return_value = mock_response
-        
+
         result = self.mf.undelete_file("file-uuid")
-        
+
         self.assertTrue(result)
         self.mock_stub.UndeleteFile.assert_called_once()
 
-    def test_restore_to_version_success(self):
-        """Test successful restore to version."""
-        # Mock the gRPC response
-        mock_response = Mock()
-        mock_response.success = True
-        mock_response.restored_version = "1234567890.0"
-        self.mock_stub.RestoreToVersion.return_value = mock_response
-        
-        result = self.mf.restore_to_version("file-uuid", "1234567890.0")
-        
-        self.assertEqual(result, "1234567890.0")
-        self.mock_stub.RestoreToVersion.assert_called_once()
-
-    def test_restore_to_version_failure(self):
-        """Test restore to version failure."""
-        # Mock the gRPC response
+    def test_undelete_file_failure(self):
+        """Test file undeletion failure."""
         mock_response = Mock()
         mock_response.success = False
-        self.mock_stub.RestoreToVersion.return_value = mock_response
-        
+        self.mock_stub.UndeleteFile.return_value = mock_response
+
+        result = self.mf.undelete_file("file-uuid")
+
+        self.assertFalse(result)
+
+    # --- Restore to version: emulated via ReadVersion + WriteFile ---
+
+    def test_restore_to_version_success(self):
+        """restore_to_version reads the version and writes it back."""
+        read_response = Mock()
+        read_response.success = True
+        read_response.data = b"old content"
+        self.mock_stub.ReadVersion.return_value = read_response
+
+        write_response = Mock()
+        write_response.success = True
+        self.mock_stub.WriteFile.return_value = write_response
+
         result = self.mf.restore_to_version("file-uuid", "1234567890.0")
-        
+
+        self.assertIsInstance(result, str)
+        self.mock_stub.ReadVersion.assert_called_once()
+        self.mock_stub.WriteFile.assert_called_once()
+        # The version we wrote back must match the requested version's content
+        write_args = self.mock_stub.WriteFile.call_args[0][0]
+        self.assertEqual(write_args.data, b"old content")
+
+    def test_restore_to_version_read_failure(self):
+        """restore_to_version returns None when the version cannot be read."""
+        read_response = Mock()
+        read_response.success = False
+        self.mock_stub.ReadVersion.return_value = read_response
+
+        result = self.mf.restore_to_version("file-uuid", "1234567890.0")
+
         self.assertIsNone(result)
+        self.mock_stub.WriteFile.assert_not_called()
 
 
 if __name__ == '__main__':
