@@ -7,11 +7,12 @@ from fileengine import ManagedFiles
 from fileengine import fileservice_pb2
 
 def main():
-    # Create a ManagedFiles instance with connection to the gRPC service
-    # Using root user with superuser privileges to bypass permission issues
+    # Create a ManagedFiles instance with connection to the gRPC service.
+    # Administration is role-based: the system_admin role authorizes root-level
+    # creation and ACL/role management (the username itself is not special).
     mf = ManagedFiles(
-        user_name="root",
-        user_roles=["admin", "superuser"],
+        user_name="demo_admin",
+        user_roles=["system_admin"],
         user_claims=["read", "write", "delete", "admin"],
         server_address="localhost:50051",  # Default gRPC server address
         tenant="default"
@@ -99,7 +100,7 @@ def main():
         revisions = mf.revisions(file_uid)
         if len(revisions) > 1:
             # Restore to the second-to-last version as an example
-            restore_version = mf.restore_to_version(file_uid, revisions[1]['version'])
+            restore_version = mf.restore_to_version(file_uid, revisions[1].version)
             print(f"Restored to version: {restore_version}")
 
         # Purge old versions (keep only the latest 2)
