@@ -26,7 +26,7 @@ if _version_not_supported:
 
 
 class FileServiceStub:
-    """File service for virtual filesystem operations
+    """Service definition for the FileEngine virtual filesystem
     """
 
     def __init__(self, channel):
@@ -36,134 +36,199 @@ class FileServiceStub:
             channel: A grpc.Channel.
         """
         self.MakeDirectory = channel.unary_unary(
-                '/fileengine.FileService/MakeDirectory',
+                '/fileengine_rpc.FileService/MakeDirectory',
                 request_serializer=fileservice__pb2.MakeDirectoryRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.MakeDirectoryResponse.FromString,
                 _registered_method=True)
         self.RemoveDirectory = channel.unary_unary(
-                '/fileengine.FileService/RemoveDirectory',
+                '/fileengine_rpc.FileService/RemoveDirectory',
                 request_serializer=fileservice__pb2.RemoveDirectoryRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.RemoveDirectoryResponse.FromString,
                 _registered_method=True)
         self.ListDirectory = channel.unary_unary(
-                '/fileengine.FileService/ListDirectory',
+                '/fileengine_rpc.FileService/ListDirectory',
                 request_serializer=fileservice__pb2.ListDirectoryRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.ListDirectoryResponse.FromString,
                 _registered_method=True)
-        self.CreateFile = channel.unary_unary(
-                '/fileengine.FileService/CreateFile',
-                request_serializer=fileservice__pb2.CreateFileRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.CreateFileResponse.FromString,
+        self.ListDirectoryWithDeleted = channel.unary_unary(
+                '/fileengine_rpc.FileService/ListDirectoryWithDeleted',
+                request_serializer=fileservice__pb2.ListDirectoryWithDeletedRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.ListDirectoryWithDeletedResponse.FromString,
                 _registered_method=True)
-        self.DeleteFile = channel.unary_unary(
-                '/fileengine.FileService/DeleteFile',
-                request_serializer=fileservice__pb2.DeleteFileRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.DeleteFileResponse.FromString,
+        self.Touch = channel.unary_unary(
+                '/fileengine_rpc.FileService/Touch',
+                request_serializer=fileservice__pb2.TouchRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.TouchResponse.FromString,
+                _registered_method=True)
+        self.RemoveFile = channel.unary_unary(
+                '/fileengine_rpc.FileService/RemoveFile',
+                request_serializer=fileservice__pb2.RemoveFileRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.RemoveFileResponse.FromString,
                 _registered_method=True)
         self.UndeleteFile = channel.unary_unary(
-                '/fileengine.FileService/UndeleteFile',
+                '/fileengine_rpc.FileService/UndeleteFile',
                 request_serializer=fileservice__pb2.UndeleteFileRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.UndeleteFileResponse.FromString,
                 _registered_method=True)
-        self.WriteFile = channel.unary_unary(
-                '/fileengine.FileService/WriteFile',
-                request_serializer=fileservice__pb2.WriteFileRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.WriteFileResponse.FromString,
+        self.PutFile = channel.unary_unary(
+                '/fileengine_rpc.FileService/PutFile',
+                request_serializer=fileservice__pb2.PutFileRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.PutFileResponse.FromString,
                 _registered_method=True)
-        self.ReadFile = channel.unary_unary(
-                '/fileengine.FileService/ReadFile',
-                request_serializer=fileservice__pb2.ReadFileRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.ReadFileResponse.FromString,
+        self.GetFile = channel.unary_unary(
+                '/fileengine_rpc.FileService/GetFile',
+                request_serializer=fileservice__pb2.GetFileRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.GetFileResponse.FromString,
                 _registered_method=True)
-        self.GetFileInfo = channel.unary_unary(
-                '/fileengine.FileService/GetFileInfo',
-                request_serializer=fileservice__pb2.GetFileInfoRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.GetFileInfoResponse.FromString,
+        self.Stat = channel.unary_unary(
+                '/fileengine_rpc.FileService/Stat',
+                request_serializer=fileservice__pb2.StatRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.StatResponse.FromString,
                 _registered_method=True)
-        self.FileExists = channel.unary_unary(
-                '/fileengine.FileService/FileExists',
-                request_serializer=fileservice__pb2.FileExistsRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.FileExistsResponse.FromString,
+        self.Exists = channel.unary_unary(
+                '/fileengine_rpc.FileService/Exists',
+                request_serializer=fileservice__pb2.ExistsRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.ExistsResponse.FromString,
                 _registered_method=True)
-        self.MoveFile = channel.unary_unary(
-                '/fileengine.FileService/MoveFile',
-                request_serializer=fileservice__pb2.MoveFileRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.MoveFileResponse.FromString,
+        self.Rename = channel.unary_unary(
+                '/fileengine_rpc.FileService/Rename',
+                request_serializer=fileservice__pb2.RenameRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.RenameResponse.FromString,
                 _registered_method=True)
-        self.CopyFile = channel.unary_unary(
-                '/fileengine.FileService/CopyFile',
-                request_serializer=fileservice__pb2.CopyFileRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.CopyFileResponse.FromString,
+        self.Move = channel.unary_unary(
+                '/fileengine_rpc.FileService/Move',
+                request_serializer=fileservice__pb2.MoveRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.MoveResponse.FromString,
                 _registered_method=True)
-        self.RenameFile = channel.unary_unary(
-                '/fileengine.FileService/RenameFile',
-                request_serializer=fileservice__pb2.RenameFileRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.RenameFileResponse.FromString,
+        self.Copy = channel.unary_unary(
+                '/fileengine_rpc.FileService/Copy',
+                request_serializer=fileservice__pb2.CopyRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.CopyResponse.FromString,
                 _registered_method=True)
         self.ListVersions = channel.unary_unary(
-                '/fileengine.FileService/ListVersions',
+                '/fileengine_rpc.FileService/ListVersions',
                 request_serializer=fileservice__pb2.ListVersionsRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.ListVersionsResponse.FromString,
                 _registered_method=True)
-        self.ReadVersion = channel.unary_unary(
-                '/fileengine.FileService/ReadVersion',
-                request_serializer=fileservice__pb2.ReadVersionRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.ReadVersionResponse.FromString,
+        self.GetVersion = channel.unary_unary(
+                '/fileengine_rpc.FileService/GetVersion',
+                request_serializer=fileservice__pb2.GetVersionRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.GetVersionResponse.FromString,
+                _registered_method=True)
+        self.RestoreToVersion = channel.unary_unary(
+                '/fileengine_rpc.FileService/RestoreToVersion',
+                request_serializer=fileservice__pb2.RestoreToVersionRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.RestoreToVersionResponse.FromString,
                 _registered_method=True)
         self.SetMetadata = channel.unary_unary(
-                '/fileengine.FileService/SetMetadata',
+                '/fileengine_rpc.FileService/SetMetadata',
                 request_serializer=fileservice__pb2.SetMetadataRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.SetMetadataResponse.FromString,
                 _registered_method=True)
         self.GetMetadata = channel.unary_unary(
-                '/fileengine.FileService/GetMetadata',
+                '/fileengine_rpc.FileService/GetMetadata',
                 request_serializer=fileservice__pb2.GetMetadataRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.GetMetadataResponse.FromString,
                 _registered_method=True)
         self.GetAllMetadata = channel.unary_unary(
-                '/fileengine.FileService/GetAllMetadata',
+                '/fileengine_rpc.FileService/GetAllMetadata',
                 request_serializer=fileservice__pb2.GetAllMetadataRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.GetAllMetadataResponse.FromString,
                 _registered_method=True)
         self.DeleteMetadata = channel.unary_unary(
-                '/fileengine.FileService/DeleteMetadata',
+                '/fileengine_rpc.FileService/DeleteMetadata',
                 request_serializer=fileservice__pb2.DeleteMetadataRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.DeleteMetadataResponse.FromString,
                 _registered_method=True)
         self.GetMetadataForVersion = channel.unary_unary(
-                '/fileengine.FileService/GetMetadataForVersion',
+                '/fileengine_rpc.FileService/GetMetadataForVersion',
                 request_serializer=fileservice__pb2.GetMetadataForVersionRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.GetMetadataForVersionResponse.FromString,
                 _registered_method=True)
         self.GetAllMetadataForVersion = channel.unary_unary(
-                '/fileengine.FileService/GetAllMetadataForVersion',
+                '/fileengine_rpc.FileService/GetAllMetadataForVersion',
                 request_serializer=fileservice__pb2.GetAllMetadataForVersionRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.GetAllMetadataForVersionResponse.FromString,
                 _registered_method=True)
-        self.WriteFileStream = channel.stream_unary(
-                '/fileengine.FileService/WriteFileStream',
-                request_serializer=fileservice__pb2.WriteFileStreamRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.WriteFileStreamResponse.FromString,
+        self.GrantPermission = channel.unary_unary(
+                '/fileengine_rpc.FileService/GrantPermission',
+                request_serializer=fileservice__pb2.GrantPermissionRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.GrantPermissionResponse.FromString,
                 _registered_method=True)
-        self.ReadFileStream = channel.unary_stream(
-                '/fileengine.FileService/ReadFileStream',
-                request_serializer=fileservice__pb2.ReadFileStreamRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.ReadFileStreamResponse.FromString,
+        self.RevokePermission = channel.unary_unary(
+                '/fileengine_rpc.FileService/RevokePermission',
+                request_serializer=fileservice__pb2.RevokePermissionRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.RevokePermissionResponse.FromString,
                 _registered_method=True)
-        self.ResolvePath = channel.unary_unary(
-                '/fileengine.FileService/ResolvePath',
-                request_serializer=fileservice__pb2.ResolvePathRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.ResolvePathResponse.FromString,
+        self.CheckPermission = channel.unary_unary(
+                '/fileengine_rpc.FileService/CheckPermission',
+                request_serializer=fileservice__pb2.CheckPermissionRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.CheckPermissionResponse.FromString,
                 _registered_method=True)
-        self.EvaluateACL = channel.unary_unary(
-                '/fileengine.FileService/EvaluateACL',
-                request_serializer=fileservice__pb2.EvaluateACLRequest.SerializeToString,
-                response_deserializer=fileservice__pb2.EvaluateACLResponse.FromString,
+        self.CreateRole = channel.unary_unary(
+                '/fileengine_rpc.FileService/CreateRole',
+                request_serializer=fileservice__pb2.CreateRoleRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.CreateRoleResponse.FromString,
+                _registered_method=True)
+        self.DeleteRole = channel.unary_unary(
+                '/fileengine_rpc.FileService/DeleteRole',
+                request_serializer=fileservice__pb2.DeleteRoleRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.DeleteRoleResponse.FromString,
+                _registered_method=True)
+        self.AssignUserToRole = channel.unary_unary(
+                '/fileengine_rpc.FileService/AssignUserToRole',
+                request_serializer=fileservice__pb2.AssignUserToRoleRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.AssignUserToRoleResponse.FromString,
+                _registered_method=True)
+        self.RemoveUserFromRole = channel.unary_unary(
+                '/fileengine_rpc.FileService/RemoveUserFromRole',
+                request_serializer=fileservice__pb2.RemoveUserFromRoleRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.RemoveUserFromRoleResponse.FromString,
+                _registered_method=True)
+        self.GetRolesForUser = channel.unary_unary(
+                '/fileengine_rpc.FileService/GetRolesForUser',
+                request_serializer=fileservice__pb2.GetRolesForUserRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.GetRolesForUserResponse.FromString,
+                _registered_method=True)
+        self.GetUsersForRole = channel.unary_unary(
+                '/fileengine_rpc.FileService/GetUsersForRole',
+                request_serializer=fileservice__pb2.GetUsersForRoleRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.GetUsersForRoleResponse.FromString,
+                _registered_method=True)
+        self.GetAllRoles = channel.unary_unary(
+                '/fileengine_rpc.FileService/GetAllRoles',
+                request_serializer=fileservice__pb2.GetAllRolesRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.GetAllRolesResponse.FromString,
+                _registered_method=True)
+        self.StreamFileUpload = channel.stream_unary(
+                '/fileengine_rpc.FileService/StreamFileUpload',
+                request_serializer=fileservice__pb2.PutFileRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.PutFileResponse.FromString,
+                _registered_method=True)
+        self.StreamFileDownload = channel.unary_stream(
+                '/fileengine_rpc.FileService/StreamFileDownload',
+                request_serializer=fileservice__pb2.GetFileRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.GetFileResponse.FromString,
+                _registered_method=True)
+        self.GetStorageUsage = channel.unary_unary(
+                '/fileengine_rpc.FileService/GetStorageUsage',
+                request_serializer=fileservice__pb2.StorageUsageRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.StorageUsageResponse.FromString,
+                _registered_method=True)
+        self.PurgeOldVersions = channel.unary_unary(
+                '/fileengine_rpc.FileService/PurgeOldVersions',
+                request_serializer=fileservice__pb2.PurgeOldVersionsRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.PurgeOldVersionsResponse.FromString,
+                _registered_method=True)
+        self.TriggerSync = channel.unary_unary(
+                '/fileengine_rpc.FileService/TriggerSync',
+                request_serializer=fileservice__pb2.TriggerSyncRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.TriggerSyncResponse.FromString,
                 _registered_method=True)
 
 
 class FileServiceServicer:
-    """File service for virtual filesystem operations
+    """Service definition for the FileEngine virtual filesystem
     """
 
     def MakeDirectory(self, request, context):
@@ -185,14 +250,20 @@ class FileServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def CreateFile(self, request, context):
+    def ListDirectoryWithDeleted(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Touch(self, request, context):
         """File operations
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def DeleteFile(self, request, context):
+    def RemoveFile(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -204,64 +275,71 @@ class FileServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def WriteFile(self, request, context):
+    def PutFile(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ReadFile(self, request, context):
+    def GetFile(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def GetFileInfo(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def FileExists(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def MoveFile(self, request, context):
-        """File manipulation
+    def Stat(self, request, context):
+        """File information
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def CopyFile(self, request, context):
+    def Exists(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def RenameFile(self, request, context):
+    def Rename(self, request, context):
+        """File manipulation operations
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Move(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Copy(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ListVersions(self, request, context):
-        """Version control
+        """Version operations
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ReadVersion(self, request, context):
+    def GetVersion(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RestoreToVersion(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def SetMetadata(self, request, context):
-        """Metadata operations (versioned)
+        """Metadata operations
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -297,29 +375,96 @@ class FileServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def WriteFileStream(self, request_iterator, context):
+    def GrantPermission(self, request, context):
+        """ACL operations
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RevokePermission(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CheckPermission(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateRole(self, request, context):
+        """Role management operations
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteRole(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AssignUserToRole(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RemoveUserFromRole(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetRolesForUser(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetUsersForRole(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAllRoles(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StreamFileUpload(self, request_iterator, context):
         """Streaming operations for large files
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ReadFileStream(self, request, context):
+    def StreamFileDownload(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ResolvePath(self, request, context):
-        """Path resolution operations
+    def GetStorageUsage(self, request, context):
+        """Administrative operations
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def EvaluateACL(self, request, context):
-        """ACL operations
-        """
+    def PurgeOldVersions(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TriggerSync(self, request, context):
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -342,65 +487,75 @@ def add_FileServiceServicer_to_server(servicer, server):
                     request_deserializer=fileservice__pb2.ListDirectoryRequest.FromString,
                     response_serializer=fileservice__pb2.ListDirectoryResponse.SerializeToString,
             ),
-            'CreateFile': grpc.unary_unary_rpc_method_handler(
-                    servicer.CreateFile,
-                    request_deserializer=fileservice__pb2.CreateFileRequest.FromString,
-                    response_serializer=fileservice__pb2.CreateFileResponse.SerializeToString,
+            'ListDirectoryWithDeleted': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDirectoryWithDeleted,
+                    request_deserializer=fileservice__pb2.ListDirectoryWithDeletedRequest.FromString,
+                    response_serializer=fileservice__pb2.ListDirectoryWithDeletedResponse.SerializeToString,
             ),
-            'DeleteFile': grpc.unary_unary_rpc_method_handler(
-                    servicer.DeleteFile,
-                    request_deserializer=fileservice__pb2.DeleteFileRequest.FromString,
-                    response_serializer=fileservice__pb2.DeleteFileResponse.SerializeToString,
+            'Touch': grpc.unary_unary_rpc_method_handler(
+                    servicer.Touch,
+                    request_deserializer=fileservice__pb2.TouchRequest.FromString,
+                    response_serializer=fileservice__pb2.TouchResponse.SerializeToString,
+            ),
+            'RemoveFile': grpc.unary_unary_rpc_method_handler(
+                    servicer.RemoveFile,
+                    request_deserializer=fileservice__pb2.RemoveFileRequest.FromString,
+                    response_serializer=fileservice__pb2.RemoveFileResponse.SerializeToString,
             ),
             'UndeleteFile': grpc.unary_unary_rpc_method_handler(
                     servicer.UndeleteFile,
                     request_deserializer=fileservice__pb2.UndeleteFileRequest.FromString,
                     response_serializer=fileservice__pb2.UndeleteFileResponse.SerializeToString,
             ),
-            'WriteFile': grpc.unary_unary_rpc_method_handler(
-                    servicer.WriteFile,
-                    request_deserializer=fileservice__pb2.WriteFileRequest.FromString,
-                    response_serializer=fileservice__pb2.WriteFileResponse.SerializeToString,
+            'PutFile': grpc.unary_unary_rpc_method_handler(
+                    servicer.PutFile,
+                    request_deserializer=fileservice__pb2.PutFileRequest.FromString,
+                    response_serializer=fileservice__pb2.PutFileResponse.SerializeToString,
             ),
-            'ReadFile': grpc.unary_unary_rpc_method_handler(
-                    servicer.ReadFile,
-                    request_deserializer=fileservice__pb2.ReadFileRequest.FromString,
-                    response_serializer=fileservice__pb2.ReadFileResponse.SerializeToString,
+            'GetFile': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetFile,
+                    request_deserializer=fileservice__pb2.GetFileRequest.FromString,
+                    response_serializer=fileservice__pb2.GetFileResponse.SerializeToString,
             ),
-            'GetFileInfo': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetFileInfo,
-                    request_deserializer=fileservice__pb2.GetFileInfoRequest.FromString,
-                    response_serializer=fileservice__pb2.GetFileInfoResponse.SerializeToString,
+            'Stat': grpc.unary_unary_rpc_method_handler(
+                    servicer.Stat,
+                    request_deserializer=fileservice__pb2.StatRequest.FromString,
+                    response_serializer=fileservice__pb2.StatResponse.SerializeToString,
             ),
-            'FileExists': grpc.unary_unary_rpc_method_handler(
-                    servicer.FileExists,
-                    request_deserializer=fileservice__pb2.FileExistsRequest.FromString,
-                    response_serializer=fileservice__pb2.FileExistsResponse.SerializeToString,
+            'Exists': grpc.unary_unary_rpc_method_handler(
+                    servicer.Exists,
+                    request_deserializer=fileservice__pb2.ExistsRequest.FromString,
+                    response_serializer=fileservice__pb2.ExistsResponse.SerializeToString,
             ),
-            'MoveFile': grpc.unary_unary_rpc_method_handler(
-                    servicer.MoveFile,
-                    request_deserializer=fileservice__pb2.MoveFileRequest.FromString,
-                    response_serializer=fileservice__pb2.MoveFileResponse.SerializeToString,
+            'Rename': grpc.unary_unary_rpc_method_handler(
+                    servicer.Rename,
+                    request_deserializer=fileservice__pb2.RenameRequest.FromString,
+                    response_serializer=fileservice__pb2.RenameResponse.SerializeToString,
             ),
-            'CopyFile': grpc.unary_unary_rpc_method_handler(
-                    servicer.CopyFile,
-                    request_deserializer=fileservice__pb2.CopyFileRequest.FromString,
-                    response_serializer=fileservice__pb2.CopyFileResponse.SerializeToString,
+            'Move': grpc.unary_unary_rpc_method_handler(
+                    servicer.Move,
+                    request_deserializer=fileservice__pb2.MoveRequest.FromString,
+                    response_serializer=fileservice__pb2.MoveResponse.SerializeToString,
             ),
-            'RenameFile': grpc.unary_unary_rpc_method_handler(
-                    servicer.RenameFile,
-                    request_deserializer=fileservice__pb2.RenameFileRequest.FromString,
-                    response_serializer=fileservice__pb2.RenameFileResponse.SerializeToString,
+            'Copy': grpc.unary_unary_rpc_method_handler(
+                    servicer.Copy,
+                    request_deserializer=fileservice__pb2.CopyRequest.FromString,
+                    response_serializer=fileservice__pb2.CopyResponse.SerializeToString,
             ),
             'ListVersions': grpc.unary_unary_rpc_method_handler(
                     servicer.ListVersions,
                     request_deserializer=fileservice__pb2.ListVersionsRequest.FromString,
                     response_serializer=fileservice__pb2.ListVersionsResponse.SerializeToString,
             ),
-            'ReadVersion': grpc.unary_unary_rpc_method_handler(
-                    servicer.ReadVersion,
-                    request_deserializer=fileservice__pb2.ReadVersionRequest.FromString,
-                    response_serializer=fileservice__pb2.ReadVersionResponse.SerializeToString,
+            'GetVersion': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetVersion,
+                    request_deserializer=fileservice__pb2.GetVersionRequest.FromString,
+                    response_serializer=fileservice__pb2.GetVersionResponse.SerializeToString,
+            ),
+            'RestoreToVersion': grpc.unary_unary_rpc_method_handler(
+                    servicer.RestoreToVersion,
+                    request_deserializer=fileservice__pb2.RestoreToVersionRequest.FromString,
+                    response_serializer=fileservice__pb2.RestoreToVersionResponse.SerializeToString,
             ),
             'SetMetadata': grpc.unary_unary_rpc_method_handler(
                     servicer.SetMetadata,
@@ -432,36 +587,91 @@ def add_FileServiceServicer_to_server(servicer, server):
                     request_deserializer=fileservice__pb2.GetAllMetadataForVersionRequest.FromString,
                     response_serializer=fileservice__pb2.GetAllMetadataForVersionResponse.SerializeToString,
             ),
-            'WriteFileStream': grpc.stream_unary_rpc_method_handler(
-                    servicer.WriteFileStream,
-                    request_deserializer=fileservice__pb2.WriteFileStreamRequest.FromString,
-                    response_serializer=fileservice__pb2.WriteFileStreamResponse.SerializeToString,
+            'GrantPermission': grpc.unary_unary_rpc_method_handler(
+                    servicer.GrantPermission,
+                    request_deserializer=fileservice__pb2.GrantPermissionRequest.FromString,
+                    response_serializer=fileservice__pb2.GrantPermissionResponse.SerializeToString,
             ),
-            'ReadFileStream': grpc.unary_stream_rpc_method_handler(
-                    servicer.ReadFileStream,
-                    request_deserializer=fileservice__pb2.ReadFileStreamRequest.FromString,
-                    response_serializer=fileservice__pb2.ReadFileStreamResponse.SerializeToString,
+            'RevokePermission': grpc.unary_unary_rpc_method_handler(
+                    servicer.RevokePermission,
+                    request_deserializer=fileservice__pb2.RevokePermissionRequest.FromString,
+                    response_serializer=fileservice__pb2.RevokePermissionResponse.SerializeToString,
             ),
-            'ResolvePath': grpc.unary_unary_rpc_method_handler(
-                    servicer.ResolvePath,
-                    request_deserializer=fileservice__pb2.ResolvePathRequest.FromString,
-                    response_serializer=fileservice__pb2.ResolvePathResponse.SerializeToString,
+            'CheckPermission': grpc.unary_unary_rpc_method_handler(
+                    servicer.CheckPermission,
+                    request_deserializer=fileservice__pb2.CheckPermissionRequest.FromString,
+                    response_serializer=fileservice__pb2.CheckPermissionResponse.SerializeToString,
             ),
-            'EvaluateACL': grpc.unary_unary_rpc_method_handler(
-                    servicer.EvaluateACL,
-                    request_deserializer=fileservice__pb2.EvaluateACLRequest.FromString,
-                    response_serializer=fileservice__pb2.EvaluateACLResponse.SerializeToString,
+            'CreateRole': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateRole,
+                    request_deserializer=fileservice__pb2.CreateRoleRequest.FromString,
+                    response_serializer=fileservice__pb2.CreateRoleResponse.SerializeToString,
+            ),
+            'DeleteRole': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteRole,
+                    request_deserializer=fileservice__pb2.DeleteRoleRequest.FromString,
+                    response_serializer=fileservice__pb2.DeleteRoleResponse.SerializeToString,
+            ),
+            'AssignUserToRole': grpc.unary_unary_rpc_method_handler(
+                    servicer.AssignUserToRole,
+                    request_deserializer=fileservice__pb2.AssignUserToRoleRequest.FromString,
+                    response_serializer=fileservice__pb2.AssignUserToRoleResponse.SerializeToString,
+            ),
+            'RemoveUserFromRole': grpc.unary_unary_rpc_method_handler(
+                    servicer.RemoveUserFromRole,
+                    request_deserializer=fileservice__pb2.RemoveUserFromRoleRequest.FromString,
+                    response_serializer=fileservice__pb2.RemoveUserFromRoleResponse.SerializeToString,
+            ),
+            'GetRolesForUser': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRolesForUser,
+                    request_deserializer=fileservice__pb2.GetRolesForUserRequest.FromString,
+                    response_serializer=fileservice__pb2.GetRolesForUserResponse.SerializeToString,
+            ),
+            'GetUsersForRole': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetUsersForRole,
+                    request_deserializer=fileservice__pb2.GetUsersForRoleRequest.FromString,
+                    response_serializer=fileservice__pb2.GetUsersForRoleResponse.SerializeToString,
+            ),
+            'GetAllRoles': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAllRoles,
+                    request_deserializer=fileservice__pb2.GetAllRolesRequest.FromString,
+                    response_serializer=fileservice__pb2.GetAllRolesResponse.SerializeToString,
+            ),
+            'StreamFileUpload': grpc.stream_unary_rpc_method_handler(
+                    servicer.StreamFileUpload,
+                    request_deserializer=fileservice__pb2.PutFileRequest.FromString,
+                    response_serializer=fileservice__pb2.PutFileResponse.SerializeToString,
+            ),
+            'StreamFileDownload': grpc.unary_stream_rpc_method_handler(
+                    servicer.StreamFileDownload,
+                    request_deserializer=fileservice__pb2.GetFileRequest.FromString,
+                    response_serializer=fileservice__pb2.GetFileResponse.SerializeToString,
+            ),
+            'GetStorageUsage': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetStorageUsage,
+                    request_deserializer=fileservice__pb2.StorageUsageRequest.FromString,
+                    response_serializer=fileservice__pb2.StorageUsageResponse.SerializeToString,
+            ),
+            'PurgeOldVersions': grpc.unary_unary_rpc_method_handler(
+                    servicer.PurgeOldVersions,
+                    request_deserializer=fileservice__pb2.PurgeOldVersionsRequest.FromString,
+                    response_serializer=fileservice__pb2.PurgeOldVersionsResponse.SerializeToString,
+            ),
+            'TriggerSync': grpc.unary_unary_rpc_method_handler(
+                    servicer.TriggerSync,
+                    request_deserializer=fileservice__pb2.TriggerSyncRequest.FromString,
+                    response_serializer=fileservice__pb2.TriggerSyncResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'fileengine.FileService', rpc_method_handlers)
+            'fileengine_rpc.FileService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('fileengine.FileService', rpc_method_handlers)
+    server.add_registered_method_handlers('fileengine_rpc.FileService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
 class FileService:
-    """File service for virtual filesystem operations
+    """Service definition for the FileEngine virtual filesystem
     """
 
     @staticmethod
@@ -478,7 +688,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/MakeDirectory',
+            '/fileengine_rpc.FileService/MakeDirectory',
             fileservice__pb2.MakeDirectoryRequest.SerializeToString,
             fileservice__pb2.MakeDirectoryResponse.FromString,
             options,
@@ -505,7 +715,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/RemoveDirectory',
+            '/fileengine_rpc.FileService/RemoveDirectory',
             fileservice__pb2.RemoveDirectoryRequest.SerializeToString,
             fileservice__pb2.RemoveDirectoryResponse.FromString,
             options,
@@ -532,7 +742,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/ListDirectory',
+            '/fileengine_rpc.FileService/ListDirectory',
             fileservice__pb2.ListDirectoryRequest.SerializeToString,
             fileservice__pb2.ListDirectoryResponse.FromString,
             options,
@@ -546,7 +756,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def CreateFile(request,
+    def ListDirectoryWithDeleted(request,
             target,
             options=(),
             channel_credentials=None,
@@ -559,9 +769,9 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/CreateFile',
-            fileservice__pb2.CreateFileRequest.SerializeToString,
-            fileservice__pb2.CreateFileResponse.FromString,
+            '/fileengine_rpc.FileService/ListDirectoryWithDeleted',
+            fileservice__pb2.ListDirectoryWithDeletedRequest.SerializeToString,
+            fileservice__pb2.ListDirectoryWithDeletedResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -573,7 +783,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def DeleteFile(request,
+    def Touch(request,
             target,
             options=(),
             channel_credentials=None,
@@ -586,9 +796,36 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/DeleteFile',
-            fileservice__pb2.DeleteFileRequest.SerializeToString,
-            fileservice__pb2.DeleteFileResponse.FromString,
+            '/fileengine_rpc.FileService/Touch',
+            fileservice__pb2.TouchRequest.SerializeToString,
+            fileservice__pb2.TouchResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RemoveFile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/RemoveFile',
+            fileservice__pb2.RemoveFileRequest.SerializeToString,
+            fileservice__pb2.RemoveFileResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -613,7 +850,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/UndeleteFile',
+            '/fileengine_rpc.FileService/UndeleteFile',
             fileservice__pb2.UndeleteFileRequest.SerializeToString,
             fileservice__pb2.UndeleteFileResponse.FromString,
             options,
@@ -627,7 +864,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def WriteFile(request,
+    def PutFile(request,
             target,
             options=(),
             channel_credentials=None,
@@ -640,9 +877,9 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/WriteFile',
-            fileservice__pb2.WriteFileRequest.SerializeToString,
-            fileservice__pb2.WriteFileResponse.FromString,
+            '/fileengine_rpc.FileService/PutFile',
+            fileservice__pb2.PutFileRequest.SerializeToString,
+            fileservice__pb2.PutFileResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -654,7 +891,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def ReadFile(request,
+    def GetFile(request,
             target,
             options=(),
             channel_credentials=None,
@@ -667,9 +904,9 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/ReadFile',
-            fileservice__pb2.ReadFileRequest.SerializeToString,
-            fileservice__pb2.ReadFileResponse.FromString,
+            '/fileengine_rpc.FileService/GetFile',
+            fileservice__pb2.GetFileRequest.SerializeToString,
+            fileservice__pb2.GetFileResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -681,7 +918,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def GetFileInfo(request,
+    def Stat(request,
             target,
             options=(),
             channel_credentials=None,
@@ -694,9 +931,9 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/GetFileInfo',
-            fileservice__pb2.GetFileInfoRequest.SerializeToString,
-            fileservice__pb2.GetFileInfoResponse.FromString,
+            '/fileengine_rpc.FileService/Stat',
+            fileservice__pb2.StatRequest.SerializeToString,
+            fileservice__pb2.StatResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -708,7 +945,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def FileExists(request,
+    def Exists(request,
             target,
             options=(),
             channel_credentials=None,
@@ -721,9 +958,9 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/FileExists',
-            fileservice__pb2.FileExistsRequest.SerializeToString,
-            fileservice__pb2.FileExistsResponse.FromString,
+            '/fileengine_rpc.FileService/Exists',
+            fileservice__pb2.ExistsRequest.SerializeToString,
+            fileservice__pb2.ExistsResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -735,7 +972,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def MoveFile(request,
+    def Rename(request,
             target,
             options=(),
             channel_credentials=None,
@@ -748,9 +985,9 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/MoveFile',
-            fileservice__pb2.MoveFileRequest.SerializeToString,
-            fileservice__pb2.MoveFileResponse.FromString,
+            '/fileengine_rpc.FileService/Rename',
+            fileservice__pb2.RenameRequest.SerializeToString,
+            fileservice__pb2.RenameResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -762,7 +999,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def CopyFile(request,
+    def Move(request,
             target,
             options=(),
             channel_credentials=None,
@@ -775,9 +1012,9 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/CopyFile',
-            fileservice__pb2.CopyFileRequest.SerializeToString,
-            fileservice__pb2.CopyFileResponse.FromString,
+            '/fileengine_rpc.FileService/Move',
+            fileservice__pb2.MoveRequest.SerializeToString,
+            fileservice__pb2.MoveResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -789,7 +1026,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def RenameFile(request,
+    def Copy(request,
             target,
             options=(),
             channel_credentials=None,
@@ -802,9 +1039,9 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/RenameFile',
-            fileservice__pb2.RenameFileRequest.SerializeToString,
-            fileservice__pb2.RenameFileResponse.FromString,
+            '/fileengine_rpc.FileService/Copy',
+            fileservice__pb2.CopyRequest.SerializeToString,
+            fileservice__pb2.CopyResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -829,7 +1066,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/ListVersions',
+            '/fileengine_rpc.FileService/ListVersions',
             fileservice__pb2.ListVersionsRequest.SerializeToString,
             fileservice__pb2.ListVersionsResponse.FromString,
             options,
@@ -843,7 +1080,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def ReadVersion(request,
+    def GetVersion(request,
             target,
             options=(),
             channel_credentials=None,
@@ -856,9 +1093,36 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/ReadVersion',
-            fileservice__pb2.ReadVersionRequest.SerializeToString,
-            fileservice__pb2.ReadVersionResponse.FromString,
+            '/fileengine_rpc.FileService/GetVersion',
+            fileservice__pb2.GetVersionRequest.SerializeToString,
+            fileservice__pb2.GetVersionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RestoreToVersion(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/RestoreToVersion',
+            fileservice__pb2.RestoreToVersionRequest.SerializeToString,
+            fileservice__pb2.RestoreToVersionResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -883,7 +1147,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/SetMetadata',
+            '/fileengine_rpc.FileService/SetMetadata',
             fileservice__pb2.SetMetadataRequest.SerializeToString,
             fileservice__pb2.SetMetadataResponse.FromString,
             options,
@@ -910,7 +1174,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/GetMetadata',
+            '/fileengine_rpc.FileService/GetMetadata',
             fileservice__pb2.GetMetadataRequest.SerializeToString,
             fileservice__pb2.GetMetadataResponse.FromString,
             options,
@@ -937,7 +1201,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/GetAllMetadata',
+            '/fileengine_rpc.FileService/GetAllMetadata',
             fileservice__pb2.GetAllMetadataRequest.SerializeToString,
             fileservice__pb2.GetAllMetadataResponse.FromString,
             options,
@@ -964,7 +1228,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/DeleteMetadata',
+            '/fileengine_rpc.FileService/DeleteMetadata',
             fileservice__pb2.DeleteMetadataRequest.SerializeToString,
             fileservice__pb2.DeleteMetadataResponse.FromString,
             options,
@@ -991,7 +1255,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/GetMetadataForVersion',
+            '/fileengine_rpc.FileService/GetMetadataForVersion',
             fileservice__pb2.GetMetadataForVersionRequest.SerializeToString,
             fileservice__pb2.GetMetadataForVersionResponse.FromString,
             options,
@@ -1018,7 +1282,7 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/GetAllMetadataForVersion',
+            '/fileengine_rpc.FileService/GetAllMetadataForVersion',
             fileservice__pb2.GetAllMetadataForVersionRequest.SerializeToString,
             fileservice__pb2.GetAllMetadataForVersionResponse.FromString,
             options,
@@ -1032,7 +1296,277 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def WriteFileStream(request_iterator,
+    def GrantPermission(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/GrantPermission',
+            fileservice__pb2.GrantPermissionRequest.SerializeToString,
+            fileservice__pb2.GrantPermissionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RevokePermission(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/RevokePermission',
+            fileservice__pb2.RevokePermissionRequest.SerializeToString,
+            fileservice__pb2.RevokePermissionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CheckPermission(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/CheckPermission',
+            fileservice__pb2.CheckPermissionRequest.SerializeToString,
+            fileservice__pb2.CheckPermissionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateRole(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/CreateRole',
+            fileservice__pb2.CreateRoleRequest.SerializeToString,
+            fileservice__pb2.CreateRoleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteRole(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/DeleteRole',
+            fileservice__pb2.DeleteRoleRequest.SerializeToString,
+            fileservice__pb2.DeleteRoleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AssignUserToRole(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/AssignUserToRole',
+            fileservice__pb2.AssignUserToRoleRequest.SerializeToString,
+            fileservice__pb2.AssignUserToRoleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RemoveUserFromRole(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/RemoveUserFromRole',
+            fileservice__pb2.RemoveUserFromRoleRequest.SerializeToString,
+            fileservice__pb2.RemoveUserFromRoleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetRolesForUser(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/GetRolesForUser',
+            fileservice__pb2.GetRolesForUserRequest.SerializeToString,
+            fileservice__pb2.GetRolesForUserResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetUsersForRole(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/GetUsersForRole',
+            fileservice__pb2.GetUsersForRoleRequest.SerializeToString,
+            fileservice__pb2.GetUsersForRoleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAllRoles(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/GetAllRoles',
+            fileservice__pb2.GetAllRolesRequest.SerializeToString,
+            fileservice__pb2.GetAllRolesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StreamFileUpload(request_iterator,
             target,
             options=(),
             channel_credentials=None,
@@ -1045,9 +1579,9 @@ class FileService:
         return grpc.experimental.stream_unary(
             request_iterator,
             target,
-            '/fileengine.FileService/WriteFileStream',
-            fileservice__pb2.WriteFileStreamRequest.SerializeToString,
-            fileservice__pb2.WriteFileStreamResponse.FromString,
+            '/fileengine_rpc.FileService/StreamFileUpload',
+            fileservice__pb2.PutFileRequest.SerializeToString,
+            fileservice__pb2.PutFileResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -1059,7 +1593,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def ReadFileStream(request,
+    def StreamFileDownload(request,
             target,
             options=(),
             channel_credentials=None,
@@ -1072,9 +1606,9 @@ class FileService:
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/fileengine.FileService/ReadFileStream',
-            fileservice__pb2.ReadFileStreamRequest.SerializeToString,
-            fileservice__pb2.ReadFileStreamResponse.FromString,
+            '/fileengine_rpc.FileService/StreamFileDownload',
+            fileservice__pb2.GetFileRequest.SerializeToString,
+            fileservice__pb2.GetFileResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -1086,7 +1620,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def ResolvePath(request,
+    def GetStorageUsage(request,
             target,
             options=(),
             channel_credentials=None,
@@ -1099,9 +1633,9 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/ResolvePath',
-            fileservice__pb2.ResolvePathRequest.SerializeToString,
-            fileservice__pb2.ResolvePathResponse.FromString,
+            '/fileengine_rpc.FileService/GetStorageUsage',
+            fileservice__pb2.StorageUsageRequest.SerializeToString,
+            fileservice__pb2.StorageUsageResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -1113,7 +1647,7 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
-    def EvaluateACL(request,
+    def PurgeOldVersions(request,
             target,
             options=(),
             channel_credentials=None,
@@ -1126,9 +1660,36 @@ class FileService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/fileengine.FileService/EvaluateACL',
-            fileservice__pb2.EvaluateACLRequest.SerializeToString,
-            fileservice__pb2.EvaluateACLResponse.FromString,
+            '/fileengine_rpc.FileService/PurgeOldVersions',
+            fileservice__pb2.PurgeOldVersionsRequest.SerializeToString,
+            fileservice__pb2.PurgeOldVersionsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TriggerSync(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/TriggerSync',
+            fileservice__pb2.TriggerSyncRequest.SerializeToString,
+            fileservice__pb2.TriggerSyncResponse.FromString,
             options,
             channel_credentials,
             insecure,
