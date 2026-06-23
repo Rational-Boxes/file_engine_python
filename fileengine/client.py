@@ -590,8 +590,10 @@ class ManagedFiles:
                          user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
         Grant a permission to a principal on a resource. Prefix the principal
-        with ``role:`` to target a role. ``effect`` is 'allow' (default) or
-        'deny'. Requires MANAGE_ACL on the resource (or system_admin).
+        with ``role:`` to target a role, or ``claim:<key>=<value>`` to target an
+        attribute-based (ABAC) claim — the rule then matches any requester whose
+        auth claims contain that key/value pair. ``effect`` is 'allow' (default)
+        or 'deny'. Requires MANAGE_ACL on the resource (or system_admin).
         """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:

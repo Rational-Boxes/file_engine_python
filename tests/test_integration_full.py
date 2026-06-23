@@ -179,6 +179,39 @@ class TestFullIntegration(unittest.TestCase):
         self.admin.grant_permission(f, "grace", "r", effect="deny")
         self.assertNotIn("READ", self.admin.get_effective_permissions(f, user="grace", roles=[]))
 
+    def test_406_claim_based_acl(self):
+        # ABAC: grant to a "claim:key=value" principal; the decision then
+        # depends on the requester's auth claims, not their user/roles.
+        f = self._mkfile("claim.txt", b"a")
+        self.assertTrue(
+            self.admin.grant_permission(f, "claim:department=engineering", "r"))
+        self.assertTrue(
+            self.admin.grant_permission(f, "claim:department=engineering", "w"))
+
+        eng = [("department", "engineering")]
+        sales = [("department", "sales")]
+
+        # A requester presenting the matching claim is granted.
+        self.assertTrue(
+            self.admin.check_permission(f, "r", user="ivy", roles=[], claims=eng))
+        eff = set(self.admin.get_effective_permissions(
+            f, user="ivy", roles=[], claims=eng))
+        self.assertTrue({"READ", "WRITE"}.issubset(eff))
+
+        # Different claim value, or no claims at all -> denied.
+        self.assertFalse(
+            self.admin.check_permission(f, "r", user="ivy", roles=[], claims=sales))
+        self.assertFalse(
+            self.admin.check_permission(f, "r", user="ivy", roles=[], claims=[]))
+        self.assertNotIn("READ", set(self.admin.get_effective_permissions(
+            f, user="ivy", roles=[], claims=[])))
+
+        # A matching DENY claim overrides an ALLOW from elsewhere.
+        self.admin.grant_permission(f, "claim:status=quarantined", "r", effect="deny")
+        denied = [("department", "engineering"), ("status", "quarantined")]
+        self.assertFalse(
+            self.admin.check_permission(f, "r", user="ivy", roles=[], claims=denied))
+
     def test_41_role_based_grant(self):
         f = self._mkfile("rbac.txt", b"a")
         role = f"editors_{self.suffix}"
