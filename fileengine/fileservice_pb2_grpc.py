@@ -165,6 +165,11 @@ class FileServiceStub:
                 request_serializer=fileservice__pb2.CheckPermissionRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.CheckPermissionResponse.FromString,
                 _registered_method=True)
+        self.GetEffectivePermissions = channel.unary_unary(
+                '/fileengine_rpc.FileService/GetEffectivePermissions',
+                request_serializer=fileservice__pb2.GetEffectivePermissionsRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.GetEffectivePermissionsResponse.FromString,
+                _registered_method=True)
         self.CreateRole = channel.unary_unary(
                 '/fileengine_rpc.FileService/CreateRole',
                 request_serializer=fileservice__pb2.CreateRoleRequest.SerializeToString,
@@ -394,6 +399,12 @@ class FileServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetEffectivePermissions(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def CreateRole(self, request, context):
         """Role management operations
         """
@@ -601,6 +612,11 @@ def add_FileServiceServicer_to_server(servicer, server):
                     servicer.CheckPermission,
                     request_deserializer=fileservice__pb2.CheckPermissionRequest.FromString,
                     response_serializer=fileservice__pb2.CheckPermissionResponse.SerializeToString,
+            ),
+            'GetEffectivePermissions': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetEffectivePermissions,
+                    request_deserializer=fileservice__pb2.GetEffectivePermissionsRequest.FromString,
+                    response_serializer=fileservice__pb2.GetEffectivePermissionsResponse.SerializeToString,
             ),
             'CreateRole': grpc.unary_unary_rpc_method_handler(
                     servicer.CreateRole,
@@ -1366,6 +1382,33 @@ class FileService:
             '/fileengine_rpc.FileService/CheckPermission',
             fileservice__pb2.CheckPermissionRequest.SerializeToString,
             fileservice__pb2.CheckPermissionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetEffectivePermissions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/GetEffectivePermissions',
+            fileservice__pb2.GetEffectivePermissionsRequest.SerializeToString,
+            fileservice__pb2.GetEffectivePermissionsResponse.FromString,
             options,
             channel_credentials,
             insecure,

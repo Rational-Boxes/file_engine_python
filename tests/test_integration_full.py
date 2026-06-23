@@ -161,6 +161,24 @@ class TestFullIntegration(unittest.TestCase):
         self.admin.revoke_permission(f, "erin", "r", effect="deny")
         self.assertTrue(self.admin.check_permission(f, "r", user="erin", roles=[]))
 
+    def test_405_effective_permissions(self):
+        f = self._mkfile("eff.txt", b"a")
+        # The effective set reflects exactly the granted permissions.
+        for letter in ("r", "w", "x"):
+            self.assertTrue(self.admin.grant_permission(f, "frank", letter))
+        eff = set(self.admin.get_effective_permissions(f, user="frank", roles=[]))
+        self.assertTrue({"READ", "WRITE", "EXECUTE"}.issubset(eff))
+        self.assertNotIn("DELETE", eff)
+        # A principal with no grants gets nothing of frank's grants.
+        nobody = set(self.admin.get_effective_permissions(f, user="nobody", roles=[]))
+        self.assertNotIn("WRITE", nobody)
+        self.assertNotIn("MANAGE_ACL", nobody)
+        # DENY removes a permission from the effective set.
+        self.admin.grant_permission(f, "grace", "r")
+        self.assertIn("READ", self.admin.get_effective_permissions(f, user="grace", roles=[]))
+        self.admin.grant_permission(f, "grace", "r", effect="deny")
+        self.assertNotIn("READ", self.admin.get_effective_permissions(f, user="grace", roles=[]))
+
     def test_41_role_based_grant(self):
         f = self._mkfile("rbac.txt", b"a")
         role = f"editors_{self.suffix}"
