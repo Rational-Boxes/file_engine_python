@@ -54,10 +54,16 @@ class FileInfo(BaseModel):
     created_at: Optional[datetime] = None
     modified_at: Optional[datetime] = None
     version: str = ""
+    rendition_count: int = 0  # hidden child renditions (files only; 0 for dirs)
 
     @property
     def is_dir(self) -> bool:
         return self.type == FileType.DIRECTORY
+
+    @property
+    def has_renditions(self) -> bool:
+        """True if this file has hidden alternate-format renditions."""
+        return self.rendition_count > 0
 
 
 class DirectoryEntry(BaseModel):
@@ -69,10 +75,16 @@ class DirectoryEntry(BaseModel):
     created_at: Optional[datetime] = None
     modified_at: Optional[datetime] = None
     version_count: int = 0
+    rendition_count: int = 0  # hidden child renditions (files only; 0 for dirs)
 
     @property
     def is_container(self) -> bool:
         return self.type == FileType.DIRECTORY
+
+    @property
+    def has_renditions(self) -> bool:
+        """True if this file entry has hidden alternate-format renditions."""
+        return self.rendition_count > 0
 
 
 class Revision(BaseModel):
@@ -252,6 +264,7 @@ class ManagedFiles:
                     created_at=_safe_dt(e.created_at),
                     modified_at=_safe_dt(e.modified_at),
                     version_count=e.version_count,
+                    rendition_count=e.rendition_count,
                 )
                 for e in resp.entries
             ]
@@ -342,9 +355,20 @@ class ManagedFiles:
                 size=i.size, owner=i.owner, permissions=i.permissions,
                 created_at=_safe_dt(i.created_at),
                 modified_at=_safe_dt(i.modified_at),
-                version=i.version)
+                version=i.version,
+                rendition_count=i.rendition_count)
         except grpc.RpcError:
             return None
+
+    def list_renditions(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
+        """List a file's hidden renditions (alternate-format children).
+
+        Renditions are children of a file entity and are hidden from normal
+        directory listings; pass the file's UID here to reveal them. Returns a
+        list of DirectoryEntry, or False on error. (Equivalent to listing the
+        file's UID directly.)
+        """
+        return self.list_directory(uid, user=user, tenant=tenant, roles=roles, claims=claims)
 
     def is_dir(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """Return True if the entity is a directory."""
