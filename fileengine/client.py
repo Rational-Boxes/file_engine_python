@@ -567,6 +567,25 @@ class ManagedFiles:
         except grpc.RpcError:
             return False
 
+    def get_effective_permissions(self, resource_uid: str, user: str = None, tenant: str = None,
+                                  roles: list = None, claims: list = None) -> list:
+        """
+        Return the principal's full effective permission set on a resource as a
+        list of permission names (e.g. ['READ', 'WRITE']) in a single call,
+        without accessing the entity. Intended for external systems (e.g. a
+        search indexer) that must respect filesystem permissions. The principal
+        is (user, roles, claims); returns [] on error or no permissions.
+        """
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        try:
+            resp = self.stub.GetEffectivePermissions(fileservice_pb2.GetEffectivePermissionsRequest(
+                resource_uid=resource_uid, auth=auth))
+            if not resp.success:
+                return []
+            return [fileservice_pb2.Permission.Name(p) for p in resp.permissions]
+        except grpc.RpcError:
+            return []
+
     def grant_permission(self, resource_uid: str, principal: str, permission, effect="allow",
                          user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
