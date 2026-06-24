@@ -368,7 +368,7 @@ class ManagedFiles:
         list of DirectoryEntry, or False on error. (Equivalent to listing the
         file's UID directly.)
         """
-        return self.list_directory(uid, user=user, tenant=tenant, roles=roles, claims=claims)
+        return self.dir(uid, user=user, tenant=tenant, roles=roles, claims=claims)
 
     def is_dir(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """Return True if the entity is a directory."""
