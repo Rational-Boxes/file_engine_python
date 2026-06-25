@@ -172,7 +172,15 @@ class ManagedFiles:
         self.permissions = permission_resolver
         self.tenant = tenant
 
-        self.channel = grpc.insecure_channel(server_address)
+        # Allow large file payloads on unary RPCs (GetFile/GetVersion return the
+        # whole file in one message). gRPC's default 4 MiB receive cap otherwise
+        # silently fails reads of larger files; match the core's 64 MiB limit.
+        # (get() also streams via StreamFileDownload, which is unaffected by this.)
+        channel_options = [
+            ("grpc.max_receive_message_length", 64 * 1024 * 1024),
+            ("grpc.max_send_message_length", 64 * 1024 * 1024),
+        ]
+        self.channel = grpc.insecure_channel(server_address, options=channel_options)
         self.stub = fileservice_pb2_grpc.FileServiceStub(self.channel)
 
     def close(self):
@@ -316,10 +324,18 @@ class ManagedFiles:
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             if back == 0:
-                resp = self.stub.GetFile(fileservice_pb2.GetFileRequest(uid=uid, auth=auth))
-                if not resp.success:
-                    return False
-                return io.BytesIO(resp.data)
+                # Stream the latest version in chunks (no single-message size cap),
+                # accumulating into a BytesIO. An error frame (success=False) ends
+                # the stream; an empty file simply yields no data chunks.
+                buf = io.BytesIO()
+                for resp in self.stub.StreamFileDownload(
+                        fileservice_pb2.GetFileRequest(uid=uid, auth=auth)):
+                    if not resp.success:
+                        return False
+                    if resp.data:
+                        buf.write(resp.data)
+                buf.seek(0)
+                return buf
 
             versions = self.revisions(uid, user=user, tenant=tenant, roles=roles, claims=claims)
             if not versions or len(versions) <= back:
