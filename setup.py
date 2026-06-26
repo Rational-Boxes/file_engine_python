@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="fileengine-client",
-    version="1.0.0",
+    version="1.1.0",
     author="FileEngine Team",
     author_email="",
     description="Python client for the FileEngine gRPC service",
