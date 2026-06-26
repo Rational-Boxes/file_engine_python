@@ -170,6 +170,11 @@ class FileServiceStub:
                 request_serializer=fileservice__pb2.GetEffectivePermissionsRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.GetEffectivePermissionsResponse.FromString,
                 _registered_method=True)
+        self.GetResourceAcls = channel.unary_unary(
+                '/fileengine_rpc.FileService/GetResourceAcls',
+                request_serializer=fileservice__pb2.GetResourceAclsRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.GetResourceAclsResponse.FromString,
+                _registered_method=True)
         self.CreateRole = channel.unary_unary(
                 '/fileengine_rpc.FileService/CreateRole',
                 request_serializer=fileservice__pb2.CreateRoleRequest.SerializeToString,
@@ -204,6 +209,11 @@ class FileServiceStub:
                 '/fileengine_rpc.FileService/GetAllRoles',
                 request_serializer=fileservice__pb2.GetAllRolesRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.GetAllRolesResponse.FromString,
+                _registered_method=True)
+        self.ListClaims = channel.unary_unary(
+                '/fileengine_rpc.FileService/ListClaims',
+                request_serializer=fileservice__pb2.ListClaimsRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.ListClaimsResponse.FromString,
                 _registered_method=True)
         self.StreamFileUpload = channel.stream_unary(
                 '/fileengine_rpc.FileService/StreamFileUpload',
@@ -405,6 +415,12 @@ class FileServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetResourceAcls(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def CreateRole(self, request, context):
         """Role management operations
         """
@@ -443,6 +459,12 @@ class FileServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def GetAllRoles(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListClaims(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -618,6 +640,11 @@ def add_FileServiceServicer_to_server(servicer, server):
                     request_deserializer=fileservice__pb2.GetEffectivePermissionsRequest.FromString,
                     response_serializer=fileservice__pb2.GetEffectivePermissionsResponse.SerializeToString,
             ),
+            'GetResourceAcls': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetResourceAcls,
+                    request_deserializer=fileservice__pb2.GetResourceAclsRequest.FromString,
+                    response_serializer=fileservice__pb2.GetResourceAclsResponse.SerializeToString,
+            ),
             'CreateRole': grpc.unary_unary_rpc_method_handler(
                     servicer.CreateRole,
                     request_deserializer=fileservice__pb2.CreateRoleRequest.FromString,
@@ -652,6 +679,11 @@ def add_FileServiceServicer_to_server(servicer, server):
                     servicer.GetAllRoles,
                     request_deserializer=fileservice__pb2.GetAllRolesRequest.FromString,
                     response_serializer=fileservice__pb2.GetAllRolesResponse.SerializeToString,
+            ),
+            'ListClaims': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListClaims,
+                    request_deserializer=fileservice__pb2.ListClaimsRequest.FromString,
+                    response_serializer=fileservice__pb2.ListClaimsResponse.SerializeToString,
             ),
             'StreamFileUpload': grpc.stream_unary_rpc_method_handler(
                     servicer.StreamFileUpload,
@@ -1420,6 +1452,33 @@ class FileService:
             _registered_method=True)
 
     @staticmethod
+    def GetResourceAcls(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/GetResourceAcls',
+            fileservice__pb2.GetResourceAclsRequest.SerializeToString,
+            fileservice__pb2.GetResourceAclsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def CreateRole(request,
             target,
             options=(),
@@ -1598,6 +1657,33 @@ class FileService:
             '/fileengine_rpc.FileService/GetAllRoles',
             fileservice__pb2.GetAllRolesRequest.SerializeToString,
             fileservice__pb2.GetAllRolesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListClaims(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/ListClaims',
+            fileservice__pb2.ListClaimsRequest.SerializeToString,
+            fileservice__pb2.ListClaimsResponse.FromString,
             options,
             channel_credentials,
             insecure,

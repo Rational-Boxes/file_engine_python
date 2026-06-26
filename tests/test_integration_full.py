@@ -198,12 +198,14 @@ class TestFullIntegration(unittest.TestCase):
             f, user="ivy", roles=[], claims=eng))
         self.assertTrue({"READ", "WRITE"}.issubset(eff))
 
-        # Different claim value, or no claims at all -> denied.
+        # Different claim value, or no claims at all -> no claim-granted bits.
+        # READ is granted to everyone by the read-by-default baseline, so the
+        # claim's effect is witnessed by WRITE rather than READ.
         self.assertFalse(
-            self.admin.check_permission(f, "r", user="ivy", roles=[], claims=sales))
+            self.admin.check_permission(f, "w", user="ivy", roles=[], claims=sales))
         self.assertFalse(
-            self.admin.check_permission(f, "r", user="ivy", roles=[], claims=[]))
-        self.assertNotIn("READ", set(self.admin.get_effective_permissions(
+            self.admin.check_permission(f, "w", user="ivy", roles=[], claims=[]))
+        self.assertNotIn("WRITE", set(self.admin.get_effective_permissions(
             f, user="ivy", roles=[], claims=[])))
 
         # A matching DENY claim overrides an ALLOW from elsewhere.
