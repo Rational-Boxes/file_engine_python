@@ -22,6 +22,12 @@ from pydantic import BaseModel, Field
 
 from . import fileservice_pb2
 from . import fileservice_pb2_grpc
+from .exceptions import (
+    FileEngineError, FileSystemError,
+    ServerUnreachableError, ServiceUnavailableError, WriteUnavailableError,
+    AuthenticationError, PermissionDeniedError,
+    NotFoundError, AlreadyExistsError, InvalidRequestError, OperationError,
+)
 
 ROOT_UID = ""
 ZERO_UID = "00000000-0000-0000-0000-000000000000"
@@ -102,9 +108,61 @@ class StorageUsage(BaseModel):
     usage_percentage: float
 
 
-class FileSystemError(Exception):
-    """Base exception for filesystem errors."""
-    pass
+# gRPC transport status code -> exception class. These fire when the RPC itself
+# fails (server unreachable, deadline, etc.) rather than the application-level
+# success=false path the server uses for most errors.
+_STATUS_MAP = {
+    grpc.StatusCode.UNAVAILABLE: ServerUnreachableError,
+    grpc.StatusCode.DEADLINE_EXCEEDED: ServerUnreachableError,
+    grpc.StatusCode.UNAUTHENTICATED: AuthenticationError,
+    grpc.StatusCode.PERMISSION_DENIED: PermissionDeniedError,
+    grpc.StatusCode.NOT_FOUND: NotFoundError,
+    grpc.StatusCode.ALREADY_EXISTS: AlreadyExistsError,
+    grpc.StatusCode.INVALID_ARGUMENT: InvalidRequestError,
+    grpc.StatusCode.RESOURCE_EXHAUSTED: InvalidRequestError,
+}
+
+
+def _raise_rpc(err, operation, uid=None):
+    """Translate a ``grpc.RpcError`` into the matching typed exception."""
+    code = err.code()
+    cls = _STATUS_MAP.get(code, ServiceUnavailableError if code == grpc.StatusCode.INTERNAL
+                          else FileEngineError)
+    detail = (err.details() or "").strip() or str(code)
+    raise cls(f"gRPC {operation} failed: {detail}", operation=operation, uid=uid,
+              status_code=code) from err
+
+
+def _classify_server_error(message):
+    """Pick the exception class for a server-reported ``error`` string."""
+    low = (message or "").lower()
+    if "read-only" in low or "readonly" in low:
+        return WriteUnavailableError
+    if "unavailable" in low:            # e.g. "...database unavailable"
+        return ServiceUnavailableError
+    if "permission" in low or "not authorized" in low or "forbidden" in low or "access denied" in low:
+        return PermissionDeniedError
+    if "not found" in low or "does not exist" in low or "no such" in low or "doesn't exist" in low:
+        return NotFoundError
+    if "already exists" in low:
+        return AlreadyExistsError
+    if "no file data" in low or "invalid" in low or "malformed" in low:
+        return InvalidRequestError
+    return None
+
+
+def _check(resp, operation, uid=None, default_cls=OperationError):
+    """Raise a typed exception if ``resp.success`` is false; otherwise return resp.
+
+    ``default_cls`` is used when the server error string matches no known
+    pattern (e.g. ``NotFoundError`` for stat/get-style reads).
+    """
+    if getattr(resp, "success", True):
+        return resp
+    server_error = (getattr(resp, "error", "") or "").strip()
+    cls = _classify_server_error(server_error) or default_cls
+    raise cls(server_error or f"{operation} failed", operation=operation, uid=uid,
+              server_error=server_error or None)
 
 
 def _safe_dt(ts):
@@ -237,14 +295,20 @@ class ManagedFiles:
     # Directory operations
     # ------------------------------------------------------------------ #
     def mkdir(self, parent_uuid: str, name: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
-        """Create a directory. Returns the new UID, or False on error."""
+        """Create a directory and return the new UID.
+
+        Raises a :class:`FileEngineError` subclass on failure — notably
+        :class:`WriteUnavailableError` if the server is temporarily read-only
+        (primary-database failover), or :class:`PermissionDeniedError`.
+        """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.MakeDirectory(fileservice_pb2.MakeDirectoryRequest(
                 parent_uid=parent_uuid, name=name, auth=auth))
-            return resp.uid if resp.success else False
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "mkdir", parent_uuid)
+        _check(resp, "mkdir", parent_uuid)
+        return resp.uid
 
     def dir(self, uid, show_deleted: bool = False, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> Union[List[DirectoryEntry], bool]:
         """
@@ -253,8 +317,9 @@ class ManagedFiles:
         ``show_deleted`` routes to the dedicated ``ListDirectoryWithDeleted``
         RPC (plain ``ListDirectory`` filters soft-deleted entries server-side).
 
-        Returns a list of dicts (uid, name, is_container, size, mtime, ctime,
-        version_count), or False on error.
+        Returns a list of DirectoryEntry (uid, name, is_container, size, mtime,
+        ctime, version_count). Raises a :class:`FileEngineError` subclass on
+        failure (e.g. :class:`NotFoundError`, :class:`PermissionDeniedError`).
         """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
@@ -264,20 +329,19 @@ class ManagedFiles:
             else:
                 resp = self.stub.ListDirectory(
                     fileservice_pb2.ListDirectoryRequest(uid=uid, auth=auth))
-            if not resp.success:
-                return False
-            return [
-                DirectoryEntry(
-                    uid=e.uid, name=e.name, type=e.type, size=e.size,
-                    created_at=_safe_dt(e.created_at),
-                    modified_at=_safe_dt(e.modified_at),
-                    version_count=e.version_count,
-                    rendition_count=e.rendition_count,
-                )
-                for e in resp.entries
-            ]
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "dir", uid)
+        _check(resp, "dir", uid, default_cls=NotFoundError)
+        return [
+            DirectoryEntry(
+                uid=e.uid, name=e.name, type=e.type, size=e.size,
+                created_at=_safe_dt(e.created_at),
+                modified_at=_safe_dt(e.modified_at),
+                version_count=e.version_count,
+                rendition_count=e.rendition_count,
+            )
+            for e in resp.entries
+        ]
 
     def list_deleted(self, uid, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
         """Convenience for ``dir(uid, show_deleted=True)``."""
@@ -287,20 +351,28 @@ class ManagedFiles:
     # File operations
     # ------------------------------------------------------------------ #
     def touch(self, container_uuid: str, name: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
-        """Create an empty file. Returns the new UID, or False on error."""
+        """Create an empty file and return the new UID.
+
+        Raises a :class:`FileEngineError` subclass on failure (e.g.
+        :class:`WriteUnavailableError` during a failover).
+        """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.Touch(fileservice_pb2.TouchRequest(
                 parent_uid=container_uuid, name=name, auth=auth))
-            return resp.uid if resp.success else False
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "touch", container_uuid)
+        _check(resp, "touch", container_uuid)
+        return resp.uid
 
     def put(self, uid: str, payload=None, return_open: bool = False, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
         """
         Write a new version of a file's content.
 
-        Returns a float timestamp of the write on success, or False on error.
+        Returns a float timestamp of the write on success. Raises a
+        :class:`FileEngineError` subclass on failure — notably
+        :class:`WriteUnavailableError` if the server is temporarily read-only
+        (primary-database failover).
         """
         if return_open:
             raise NotImplementedError("return_open is not supported in the gRPC client")
@@ -312,14 +384,16 @@ class ManagedFiles:
         try:
             resp = self.stub.PutFile(fileservice_pb2.PutFileRequest(
                 uid=uid, auth=auth, data=payload))
-            return time.time() if resp.success else False
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "put", uid)
+        _check(resp, "put", uid)
+        return time.time()
 
     def get(self, uid: str, back: int = 0, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
         """
         Read file content as a BytesIO. ``back`` selects how many versions back
-        (0 = latest). Returns False on error.
+        (0 = latest). Raises a :class:`FileEngineError` subclass on failure
+        (e.g. :class:`NotFoundError` if the file or requested version is absent).
         """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
@@ -330,8 +404,7 @@ class ManagedFiles:
                 buf = io.BytesIO()
                 for resp in self.stub.StreamFileDownload(
                         fileservice_pb2.GetFileRequest(uid=uid, auth=auth)):
-                    if not resp.success:
-                        return False
+                    _check(resp, "get", uid, default_cls=NotFoundError)
                     if resp.data:
                         buf.write(resp.data)
                 buf.seek(0)
@@ -339,42 +412,52 @@ class ManagedFiles:
 
             versions = self.revisions(uid, user=user, tenant=tenant, roles=roles, claims=claims)
             if not versions or len(versions) <= back:
-                return False
+                raise NotFoundError(f"version {back} back does not exist",
+                                    operation="get", uid=uid)
             ts = versions[back].version
             resp = self.stub.GetVersion(fileservice_pb2.GetVersionRequest(
                 uid=uid, version_timestamp=ts, auth=auth))
-            if not resp.success:
-                return False
-            return io.BytesIO(resp.data)
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get", uid)
+        _check(resp, "get", uid, default_cls=NotFoundError)
+        return io.BytesIO(resp.data)
 
     def entity_exists(self, entity_uid: str, include_deleted: bool = False) -> bool:
-        """Return True if the entity exists."""
+        """Return True if the entity exists, False if it does not.
+
+        Non-existence is a normal answer (returns False), but an actual failure
+        — server unreachable, read-only window, auth/permission error — raises a
+        :class:`FileEngineError` subclass.
+        """
         try:
             resp = self.stub.Exists(fileservice_pb2.ExistsRequest(
                 uid=entity_uid, auth=self._create_auth_context()))
-            return bool(resp.success and resp.exists)
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "entity_exists", entity_uid)
+        _check(resp, "entity_exists", entity_uid)
+        return bool(resp.exists)
 
-    def stat(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> Optional[FileInfo]:
-        """Return a FileInfo for the entity, or None on error."""
+    def stat(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> FileInfo:
+        """Return a FileInfo for the entity.
+
+        Raises :class:`NotFoundError` if the entity does not exist, or another
+        :class:`FileEngineError` subclass on other failures. Use
+        :meth:`entity_exists` for a non-raising existence check.
+        """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.Stat(fileservice_pb2.StatRequest(uid=uid, auth=auth))
-            if not resp.success:
-                return None
-            i = resp.info
-            return FileInfo(
-                uid=i.uid, name=i.name, parent_uid=i.parent_uid, type=i.type,
-                size=i.size, owner=i.owner, permissions=i.permissions,
-                created_at=_safe_dt(i.created_at),
-                modified_at=_safe_dt(i.modified_at),
-                version=i.version,
-                rendition_count=i.rendition_count)
-        except grpc.RpcError:
-            return None
+        except grpc.RpcError as e:
+            _raise_rpc(e, "stat", uid)
+        _check(resp, "stat", uid, default_cls=NotFoundError)
+        i = resp.info
+        return FileInfo(
+            uid=i.uid, name=i.name, parent_uid=i.parent_uid, type=i.type,
+            size=i.size, owner=i.owner, permissions=i.permissions,
+            created_at=_safe_dt(i.created_at),
+            modified_at=_safe_dt(i.modified_at),
+            version=i.version,
+            rendition_count=i.rendition_count)
 
     def list_renditions(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
         """List a file's hidden renditions (alternate-format children).
@@ -387,69 +470,95 @@ class ManagedFiles:
         return self.dir(uid, user=user, tenant=tenant, roles=roles, claims=claims)
 
     def is_dir(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
-        """Return True if the entity is a directory."""
-        info = self.stat(uid, user=user, tenant=tenant, roles=roles, claims=claims)
-        return bool(info and info.type == fileservice_pb2.DIRECTORY)
+        """Return True if the entity is a directory (False if it does not exist).
+
+        Non-existence yields False; other failures (unreachable, read-only, auth)
+        propagate as :class:`FileEngineError` subclasses.
+        """
+        try:
+            info = self.stat(uid, user=user, tenant=tenant, roles=roles, claims=claims)
+        except NotFoundError:
+            return False
+        return info.type == fileservice_pb2.DIRECTORY
 
     def get_file_mtime(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
-        """Return the modification time as a datetime, or None."""
-        info = self.stat(uid, user=user, tenant=tenant, roles=roles, claims=claims)
-        return info.modified_at if info else None
+        """Return the modification time as a datetime, or None if absent."""
+        try:
+            return self.stat(uid, user=user, tenant=tenant, roles=roles, claims=claims).modified_at
+        except NotFoundError:
+            return None
 
     def get_folder_cdate(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
-        """Return the creation time as a datetime, or None."""
-        info = self.stat(uid, user=user, tenant=tenant, roles=roles, claims=claims)
-        return info.created_at if info else None
+        """Return the creation time as a datetime, or None if absent."""
+        try:
+            return self.stat(uid, user=user, tenant=tenant, roles=roles, claims=claims).created_at
+        except NotFoundError:
+            return None
 
     def file_name(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> list:
-        """Return ``[name]`` for the entity, or ``[]`` on error."""
-        info = self.stat(uid, user=user, tenant=tenant, roles=roles, claims=claims)
-        return [info.name] if info else []
+        """Return ``[name]`` for the entity, or ``[]`` if it does not exist."""
+        try:
+            return [self.stat(uid, user=user, tenant=tenant, roles=roles, claims=claims).name]
+        except NotFoundError:
+            return []
 
     def get_parent(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> str:
-        """Return the parent UID (empty string for root), or '' on error."""
-        info = self.stat(uid, user=user, tenant=tenant, roles=roles, claims=claims)
-        return info.parent_uid if info else ""
+        """Return the parent UID (empty string for root), or '' if absent."""
+        try:
+            return self.stat(uid, user=user, tenant=tenant, roles=roles, claims=claims).parent_uid
+        except NotFoundError:
+            return ""
 
     # ------------------------------------------------------------------ #
     # File manipulation
     # ------------------------------------------------------------------ #
     def move(self, source_uid: str, destination_uid: str, new_name: str = None, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
-        """Move an entity under a new parent (optionally renaming it)."""
+        """Move an entity under a new parent (optionally renaming it).
+
+        Returns True on success; raises a :class:`FileEngineError` subclass on
+        failure (e.g. :class:`WriteUnavailableError` during a failover).
+        """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.Move(fileservice_pb2.MoveRequest(
                 source_uid=source_uid, destination_parent_uid=destination_uid, auth=auth))
-            if resp.success and new_name:
-                return self.rename(source_uid, new_name, user=user, tenant=tenant, roles=roles, claims=claims)
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "move", source_uid)
+        _check(resp, "move", source_uid)
+        if new_name:
+            self.rename(source_uid, new_name, user=user, tenant=tenant, roles=roles, claims=claims)
+        return True
 
     def copy(self, source_uid: str, destination_uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
-        """Copy an entity under a new parent (recursive for directories)."""
+        """Copy an entity under a new parent (recursive for directories).
+
+        Returns True on success; raises on failure.
+        """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.Copy(fileservice_pb2.CopyRequest(
                 source_uid=source_uid, destination_parent_uid=destination_uid, auth=auth))
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "copy", source_uid)
+        _check(resp, "copy", source_uid)
+        return True
 
     def rename(self, uid: str, new_name: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
-        """Rename an entity in place."""
+        """Rename an entity in place. Returns True on success; raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.Rename(fileservice_pb2.RenameRequest(
                 uid=uid, new_name=new_name, auth=auth))
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "rename", uid)
+        _check(resp, "rename", uid)
+        return True
 
     def remove(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
         Soft-delete an entity. Directories use RemoveDirectory, files use
-        RemoveFile. Returns True on success.
+        RemoveFile. Returns True on success; raises a :class:`FileEngineError`
+        subclass on failure.
         """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
@@ -460,109 +569,133 @@ class ManagedFiles:
             else:
                 resp = self.stub.RemoveFile(
                     fileservice_pb2.RemoveFileRequest(uid=uid, auth=auth))
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "remove", uid)
+        _check(resp, "remove", uid)
+        return True
 
     def undelete_file(self, file_uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
-        """Restore a soft-deleted file."""
+        """Restore a soft-deleted file. Returns True on success; raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.UndeleteFile(fileservice_pb2.UndeleteFileRequest(
                 uid=file_uid, auth=auth))
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "undelete_file", file_uid)
+        _check(resp, "undelete_file", file_uid)
+        return True
 
     # ------------------------------------------------------------------ #
     # Versioning
     # ------------------------------------------------------------------ #
     def revisions(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> List[Revision]:
-        """Return the file's versions as ``Revision`` models, newest first."""
+        """Return the file's versions as ``Revision`` models, newest first.
+
+        Raises a :class:`FileEngineError` subclass on failure (e.g.
+        :class:`NotFoundError` if the file does not exist).
+        """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.ListVersions(fileservice_pb2.ListVersionsRequest(uid=uid, auth=auth))
-            if not resp.success:
-                return []
-            return [Revision(version=ts, name=uid, user=auth.user) for ts in resp.versions]
-        except grpc.RpcError:
-            return []
+        except grpc.RpcError as e:
+            _raise_rpc(e, "revisions", uid)
+        _check(resp, "revisions", uid, default_cls=NotFoundError)
+        return [Revision(version=ts, name=uid, user=auth.user) for ts in resp.versions]
 
     def restore_to_version(self, file_uid: str, version_timestamp: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
-        """Restore a file to a prior version. Returns the restored version, or False."""
+        """Restore a file to a prior version. Returns the restored version
+        string; raises a :class:`FileEngineError` subclass on failure (e.g.
+        :class:`WriteUnavailableError` during a failover)."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.RestoreToVersion(fileservice_pb2.RestoreToVersionRequest(
                 uid=file_uid, version_timestamp=version_timestamp, auth=auth))
-            return resp.restored_version if resp.success else False
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "restore_to_version", file_uid)
+        _check(resp, "restore_to_version", file_uid)
+        return resp.restored_version
 
     def purge_old_versions(self, file_uid: str, keep_count: int, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
-        """Purge old versions, keeping the ``keep_count`` most recent."""
+        """Purge old versions, keeping the ``keep_count`` most recent.
+        Returns True on success; raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.PurgeOldVersions(fileservice_pb2.PurgeOldVersionsRequest(
                 uid=file_uid, keep_count=keep_count, auth=auth))
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "purge_old_versions", file_uid)
+        _check(resp, "purge_old_versions", file_uid)
+        return True
 
     # ------------------------------------------------------------------ #
     # Metadata
     # ------------------------------------------------------------------ #
     def set_metadata_value(self, uid: str, key: str, value: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+        """Set a metadata value. Returns True; raises on failure (write op)."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.SetMetadata(fileservice_pb2.SetMetadataRequest(
                 uid=uid, key=key, value=value, auth=auth))
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "set_metadata_value", uid)
+        _check(resp, "set_metadata_value", uid)
+        return True
 
     def get_metadata_value(self, uid: str, name: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
+        """Return a metadata value. Raises :class:`NotFoundError` if the file or
+        key is absent, or another :class:`FileEngineError` subclass on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.GetMetadata(fileservice_pb2.GetMetadataRequest(
                 uid=uid, key=name, auth=auth))
-            return resp.value if resp.success else None
-        except grpc.RpcError:
-            return None
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_metadata_value", uid)
+        _check(resp, "get_metadata_value", uid, default_cls=NotFoundError)
+        return resp.value
 
     def get_metadata_values(self, uid: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> dict:
+        """Return all metadata as a dict. Raises on failure (e.g. file absent)."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.GetAllMetadata(fileservice_pb2.GetAllMetadataRequest(uid=uid, auth=auth))
-            return dict(resp.metadata) if resp.success else {}
-        except grpc.RpcError:
-            return {}
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_metadata_values", uid)
+        _check(resp, "get_metadata_values", uid, default_cls=NotFoundError)
+        return dict(resp.metadata)
 
     def delete_metadata_value(self, uid: str, name: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+        """Delete a metadata value. Returns True; raises on failure (write op)."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.DeleteMetadata(fileservice_pb2.DeleteMetadataRequest(
                 uid=uid, key=name, auth=auth))
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "delete_metadata_value", uid)
+        _check(resp, "delete_metadata_value", uid)
+        return True
 
     def get_metadata_for_version(self, uid: str, version, key: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
+        """Return a versioned metadata value. Raises :class:`NotFoundError` if
+        absent, or another :class:`FileEngineError` subclass on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.GetMetadataForVersion(fileservice_pb2.GetMetadataForVersionRequest(
                 uid=uid, version_timestamp=str(version), key=key, auth=auth))
-            return resp.value if resp.success else None
-        except grpc.RpcError:
-            return None
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_metadata_for_version", uid)
+        _check(resp, "get_metadata_for_version", uid, default_cls=NotFoundError)
+        return resp.value
 
     def get_all_metadata_for_version(self, uid: str, version, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> dict:
+        """Return all versioned metadata as a dict. Raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.GetAllMetadataForVersion(fileservice_pb2.GetAllMetadataForVersionRequest(
                 uid=uid, version_timestamp=str(version), auth=auth))
-            return dict(resp.metadata) if resp.success else {}
-        except grpc.RpcError:
-            return {}
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_all_metadata_for_version", uid)
+        _check(resp, "get_all_metadata_for_version", uid, default_cls=NotFoundError)
+        return dict(resp.metadata)
 
     # ------------------------------------------------------------------ #
     # Permissions / ACL
@@ -579,9 +712,10 @@ class ManagedFiles:
                 resource_uid=resource_uid,
                 required_permission=_coerce_permission(required_permission),
                 auth=auth))
-            return bool(resp.success and resp.has_permission)
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "check_permission", resource_uid)
+        _check(resp, "check_permission", resource_uid)
+        return bool(resp.has_permission)
 
     def get_effective_permissions(self, resource_uid: str, user: str = None, tenant: str = None,
                                   roles: list = None, claims: list = None) -> list:
@@ -596,11 +730,10 @@ class ManagedFiles:
         try:
             resp = self.stub.GetEffectivePermissions(fileservice_pb2.GetEffectivePermissionsRequest(
                 resource_uid=resource_uid, auth=auth))
-            if not resp.success:
-                return []
-            return [fileservice_pb2.Permission.Name(p) for p in resp.permissions]
-        except grpc.RpcError:
-            return []
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_effective_permissions", resource_uid)
+        _check(resp, "get_effective_permissions", resource_uid)
+        return [fileservice_pb2.Permission.Name(p) for p in resp.permissions]
 
     def grant_permission(self, resource_uid: str, principal: str, permission, effect="allow",
                          user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
@@ -617,106 +750,128 @@ class ManagedFiles:
                 resource_uid=resource_uid, principal=principal,
                 permission=_coerce_permission(permission),
                 effect=_coerce_effect(effect), auth=auth))
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "grant_permission", resource_uid)
+        _check(resp, "grant_permission", resource_uid)
+        return True
 
     def revoke_permission(self, resource_uid: str, principal: str, permission, effect="allow",
                           user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
-        """Revoke a previously granted permission (mirror of grant_permission)."""
+        """Revoke a previously granted permission (mirror of grant_permission).
+        Returns True on success; raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.RevokePermission(fileservice_pb2.RevokePermissionRequest(
                 resource_uid=resource_uid, principal=principal,
                 permission=_coerce_permission(permission),
                 effect=_coerce_effect(effect), auth=auth))
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "revoke_permission", resource_uid)
+        _check(resp, "revoke_permission", resource_uid)
+        return True
 
     # ------------------------------------------------------------------ #
     # Role management
     # ------------------------------------------------------------------ #
     def create_role(self, role: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+        """Create a role. Returns True on success; raises on failure (write op)."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
-            return self.stub.CreateRole(fileservice_pb2.CreateRoleRequest(role=role, auth=auth)).success
-        except grpc.RpcError:
-            return False
+            resp = self.stub.CreateRole(fileservice_pb2.CreateRoleRequest(role=role, auth=auth))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "create_role")
+        _check(resp, "create_role")
+        return True
 
     def delete_role(self, role: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+        """Delete a role. Returns True on success; raises on failure (write op)."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
-            return self.stub.DeleteRole(fileservice_pb2.DeleteRoleRequest(role=role, auth=auth)).success
-        except grpc.RpcError:
-            return False
+            resp = self.stub.DeleteRole(fileservice_pb2.DeleteRoleRequest(role=role, auth=auth))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "delete_role")
+        _check(resp, "delete_role")
+        return True
 
     def assign_user_to_role(self, target_user: str, role: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+        """Assign a user to a role. Returns True on success; raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
-            return self.stub.AssignUserToRole(fileservice_pb2.AssignUserToRoleRequest(
-                user=target_user, role=role, auth=auth)).success
-        except grpc.RpcError:
-            return False
+            resp = self.stub.AssignUserToRole(fileservice_pb2.AssignUserToRoleRequest(
+                user=target_user, role=role, auth=auth))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "assign_user_to_role")
+        _check(resp, "assign_user_to_role")
+        return True
 
     def remove_user_from_role(self, target_user: str, role: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+        """Remove a user from a role. Returns True on success; raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
-            return self.stub.RemoveUserFromRole(fileservice_pb2.RemoveUserFromRoleRequest(
-                user=target_user, role=role, auth=auth)).success
-        except grpc.RpcError:
-            return False
+            resp = self.stub.RemoveUserFromRole(fileservice_pb2.RemoveUserFromRoleRequest(
+                user=target_user, role=role, auth=auth))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "remove_user_from_role")
+        _check(resp, "remove_user_from_role")
+        return True
 
     def get_roles_for_user(self, target_user: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> list:
+        """Return the roles assigned to a user. Raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.GetRolesForUser(fileservice_pb2.GetRolesForUserRequest(user=target_user, auth=auth))
-            return list(resp.roles) if resp.success else []
-        except grpc.RpcError:
-            return []
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_roles_for_user")
+        _check(resp, "get_roles_for_user")
+        return list(resp.roles)
 
     def get_users_for_role(self, role: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> list:
+        """Return the users assigned to a role. Raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.GetUsersForRole(fileservice_pb2.GetUsersForRoleRequest(role=role, auth=auth))
-            return list(resp.users) if resp.success else []
-        except grpc.RpcError:
-            return []
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_users_for_role")
+        _check(resp, "get_users_for_role")
+        return list(resp.users)
 
     def get_all_roles(self, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> list:
+        """Return all roles. Raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.GetAllRoles(fileservice_pb2.GetAllRolesRequest(auth=auth))
-            return list(resp.roles) if resp.success else []
-        except grpc.RpcError:
-            return []
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_all_roles")
+        _check(resp, "get_all_roles")
+        return list(resp.roles)
 
     # ------------------------------------------------------------------ #
     # Administrative
     # ------------------------------------------------------------------ #
     def get_storage_usage(self, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> Optional[StorageUsage]:
-        """Return a ``StorageUsage`` model, or None on error."""
+        """Return a ``StorageUsage`` model. Raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.GetStorageUsage(fileservice_pb2.StorageUsageRequest(
                 auth=auth, tenant=(tenant if tenant is not None else self.tenant)))
-            if not resp.success:
-                return None
-            return StorageUsage(
-                total_space=resp.total_space,
-                used_space=resp.used_space,
-                available_space=resp.available_space,
-                usage_percentage=resp.usage_percentage,
-            )
-        except grpc.RpcError:
-            return None
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_storage_usage")
+        _check(resp, "get_storage_usage")
+        return StorageUsage(
+            total_space=resp.total_space,
+            used_space=resp.used_space,
+            available_space=resp.available_space,
+            usage_percentage=resp.usage_percentage,
+        )
 
     def trigger_sync(self, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
-        """Trigger object-store synchronization for the tenant."""
+        """Trigger object-store synchronization for the tenant.
+        Returns True on success; raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.TriggerSync(fileservice_pb2.TriggerSyncRequest(
                 tenant=(tenant if tenant is not None else self.tenant), auth=auth))
-            return resp.success
-        except grpc.RpcError:
-            return False
+        except grpc.RpcError as e:
+            _raise_rpc(e, "trigger_sync")
+        _check(resp, "trigger_sync")
+        return True

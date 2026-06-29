@@ -14,7 +14,7 @@ import os
 import time
 import unittest
 
-from fileengine import ManagedFiles, FileType, ZERO_UID
+from fileengine import ManagedFiles, FileType, ZERO_UID, FileEngineError, NotFoundError
 
 SERVER = os.environ.get("FILEENGINE_SERVER", "localhost:50051")
 
@@ -43,7 +43,11 @@ class TestFullIntegration(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         try:
+            # Best-effort cleanup: removing the (non-empty) workspace may be
+            # rejected by the core, which now raises rather than returning False.
             cls.admin.remove(cls.ws)
+        except FileEngineError:
+            pass
         finally:
             cls.admin.close()
 
@@ -100,8 +104,11 @@ class TestFullIntegration(unittest.TestCase):
     def test_13_copy_move_subtree_guard(self):
         parent = self.admin.mkdir(self.ws, "guard")
         child = self.admin.mkdir(parent, "child")
-        self.assertFalse(self.admin.copy(parent, child))   # would recurse -> rejected
-        self.assertFalse(self.admin.move(parent, child))   # cycle -> rejected
+        # A rejected mutation now raises a typed error instead of returning False.
+        with self.assertRaises(FileEngineError):
+            self.admin.copy(parent, child)   # would recurse -> rejected
+        with self.assertRaises(FileEngineError):
+            self.admin.move(parent, child)   # cycle -> rejected
         # server must still be alive
         self.assertIsNotNone(self.admin.get_storage_usage())
 
@@ -146,7 +153,9 @@ class TestFullIntegration(unittest.TestCase):
         self.assertEqual(self.admin.get_all_metadata_for_version(f, "current").get("color"), "blue")
         self.assertEqual(self.admin.get_metadata_for_version(f, "current", "color"), "blue")
         self.assertTrue(self.admin.delete_metadata_value(f, "color"))
-        self.assertIsNone(self.admin.get_metadata_value(f, "color"))
+        # A now-absent metadata key raises NotFoundError (was: returned None).
+        with self.assertRaises(NotFoundError):
+            self.admin.get_metadata_value(f, "color")
 
     # -- permissions / ACL ------------------------------------------------
     def test_40_permission_letters_and_deny(self):
@@ -231,6 +240,25 @@ class TestFullIntegration(unittest.TestCase):
     # -- diagnostics ------------------------------------------------------
     def test_50_trigger_sync(self):
         self.assertTrue(self.admin.trigger_sync())
+
+    # -- typed exceptions -------------------------------------------------
+    def test_60_typed_exceptions(self):
+        bogus = "deadbeef-0000-0000-0000-000000000000"
+        # Reads against a missing entity raise NotFoundError...
+        with self.assertRaises(NotFoundError):
+            self.admin.stat(bogus)
+        with self.assertRaises(NotFoundError):
+            self.admin.get(bogus)
+        # ...but predicates still answer without raising.
+        self.assertFalse(self.admin.entity_exists(bogus))
+        self.assertFalse(self.admin.is_dir(bogus))
+        # The raised error carries structured context.
+        try:
+            self.admin.stat(bogus)
+        except NotFoundError as e:
+            self.assertEqual(e.operation, "stat")
+            self.assertEqual(e.uid, bogus)
+            self.assertFalse(e.transient)
 
 
 if __name__ == '__main__':
