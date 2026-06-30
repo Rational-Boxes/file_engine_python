@@ -41,6 +41,46 @@ print(content.getvalue())  # b"Hello, World!"
 mf.close()
 ```
 
+## Error handling
+
+Methods **raise a typed exception on failure** rather than returning a falsy
+value. Every exception derives from `FileEngineError` and carries structured
+context (`operation`, `uid`, `status_code`, `server_error`, `transient`):
+
+| Exception | Raised when |
+|-----------|-------------|
+| `ServerUnreachableError` | the server can't be reached / timed out *(transient)* |
+| `ServiceUnavailableError` | the server is up but can't serve the request *(transient)* |
+| `WriteUnavailableError` | a **write** was rejected because the server is temporarily read-only during a primary-database failover *(transient)* — retry once the primary recovers |
+| `AuthenticationError` | the identity could not be authenticated |
+| `PermissionDeniedError` | authenticated but not authorized |
+| `NotFoundError` | the entity / version / metadata key does not exist |
+| `AlreadyExistsError` | the target already exists |
+| `InvalidRequestError` | the request was rejected as invalid |
+| `OperationError` | any other server-reported failure |
+
+`WriteUnavailableError` ⊂ `ServiceUnavailableError` ⊂ `FileEngineError`. Use the
+`transient` flag to decide whether to retry:
+
+```python
+from fileengine import WriteUnavailableError, NotFoundError
+
+try:
+    mf.put(file_uid, b"new content")
+except WriteUnavailableError as e:
+    assert e.transient            # primary-DB failover — safe to retry later
+    schedule_retry(file_uid)
+except NotFoundError:
+    ...                           # the file is gone
+
+# Existence/permission predicates still answer without raising:
+if mf.entity_exists(file_uid):    # False (not an exception) when absent
+    ...
+```
+
+> Note: `FileSystemError` remains as a backwards-compatible alias for the base
+> `FileEngineError`.
+
 ## Features
 
 - UUID-based file identification for distributed handling
