@@ -83,6 +83,9 @@ class DirectoryEntry(BaseModel):
     version_count: int = 0
     rendition_count: int = 0  # hidden child renditions (files only; 0 for dirs)
     deleted: bool = False     # soft-deleted (only set by dir(show_deleted=True))
+    owner: str = ""           # owning user (from the metadata DB)
+    created_by: str = ""      # creator = first revision author (else owner)
+    modified_by: str = ""     # latest reviser = last revision author (else owner)
 
     @property
     def is_container(self) -> bool:
@@ -341,6 +344,9 @@ class ManagedFiles:
                 version_count=e.version_count,
                 rendition_count=e.rendition_count,
                 deleted=e.deleted,
+                owner=e.owner,
+                created_by=e.created_by,
+                modified_by=e.modified_by,
             )
             for e in resp.entries
         ]

@@ -28,6 +28,14 @@ class TestModels(unittest.TestCase):
         self.assertTrue(
             DirectoryEntry(uid="u", name="f", type=FileType.REGULAR_FILE, deleted=True).deleted)
 
+    def test_directory_entry_provenance_fields(self):
+        # owner/created_by/modified_by default to "" and round-trip when set.
+        de = DirectoryEntry(uid="u", name="f", type=FileType.REGULAR_FILE)
+        self.assertEqual((de.owner, de.created_by, de.modified_by), ("", "", ""))
+        de2 = DirectoryEntry(uid="u", name="f", type=FileType.REGULAR_FILE,
+                             owner="alice", created_by="alice", modified_by="bob")
+        self.assertEqual((de2.owner, de2.created_by, de2.modified_by), ("alice", "alice", "bob"))
+
     def test_models_are_pydantic(self):
         import pydantic
         for m in (FileInfo, DirectoryEntry, Revision, StorageUsage):
