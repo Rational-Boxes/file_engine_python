@@ -22,6 +22,12 @@ class TestModels(unittest.TestCase):
         self.assertTrue(de.is_container)
         self.assertFalse(DirectoryEntry(uid="u", name="f", type=FileType.REGULAR_FILE).is_container)
 
+    def test_directory_entry_deleted_flag(self):
+        # Defaults to False (live listings); set true only by with-deleted listings.
+        self.assertFalse(DirectoryEntry(uid="u", name="f", type=FileType.REGULAR_FILE).deleted)
+        self.assertTrue(
+            DirectoryEntry(uid="u", name="f", type=FileType.REGULAR_FILE, deleted=True).deleted)
+
     def test_models_are_pydantic(self):
         import pydantic
         for m in (FileInfo, DirectoryEntry, Revision, StorageUsage):

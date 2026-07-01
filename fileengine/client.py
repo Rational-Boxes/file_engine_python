@@ -82,6 +82,7 @@ class DirectoryEntry(BaseModel):
     modified_at: Optional[datetime] = None
     version_count: int = 0
     rendition_count: int = 0  # hidden child renditions (files only; 0 for dirs)
+    deleted: bool = False     # soft-deleted (only set by dir(show_deleted=True))
 
     @property
     def is_container(self) -> bool:
@@ -339,6 +340,7 @@ class ManagedFiles:
                 modified_at=_safe_dt(e.modified_at),
                 version_count=e.version_count,
                 rendition_count=e.rendition_count,
+                deleted=e.deleted,
             )
             for e in resp.entries
         ]

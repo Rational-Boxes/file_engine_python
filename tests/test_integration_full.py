@@ -128,8 +128,15 @@ class TestFullIntegration(unittest.TestCase):
         self.admin.put(f, b"bye")
         self.assertTrue(self.admin.remove(f))
         self.assertNotIn("gone.txt", [e.name for e in self.admin.dir(d)])           # hidden
-        self.assertIn("gone.txt", [e.name for e in self.admin.dir(d, show_deleted=True)])  # lsd
+        with_del = self.admin.dir(d, show_deleted=True)
+        self.assertIn("gone.txt", [e.name for e in with_del])  # lsd
+        # the deleted flag is carried through: the soft-deleted entry is marked,
+        # while any live sibling is not.
+        gone = next(e for e in with_del if e.name == "gone.txt")
+        self.assertTrue(gone.deleted)
         self.assertTrue(self.admin.undelete_file(f))
+        restored = self.admin.dir(d, show_deleted=True)
+        self.assertFalse(next(e for e in restored if e.name == "gone.txt").deleted)
         self.assertIn("gone.txt", [e.name for e in self.admin.dir(d)])
 
     # -- versioning -------------------------------------------------------
