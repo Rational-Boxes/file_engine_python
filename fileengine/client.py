@@ -214,7 +214,7 @@ class ManagedFiles:
     def __init__(self, db_interface=None, storage_base: str = None, user_roles: list = None,
                  user_name: str = '', log_access: bool = False, permission_resolver=None,
                  s3_config: dict = None, server_address: str = "localhost:50051",
-                 tenant: str = "", user_claims: list = None):
+                 tenant: str = "", user_claims: list = None, source_addr: str = ""):
         """
         Initialize ManagedFiles with a gRPC client.
 
@@ -230,6 +230,7 @@ class ManagedFiles:
         self.user = user_name or 'user'
         self.roles = user_roles or []
         self.claims = user_claims or []
+        self.source_addr = source_addr or ''  # client IP forwarded to the core for audit
         self.log_access = log_access
         self.permissions = permission_resolver
         self.tenant = tenant
@@ -256,14 +257,17 @@ class ManagedFiles:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def set_user_information(self, user_name: str = None, roles: list = None, claims: list = None):
-        """Set the default user/roles/claims used for subsequent operations."""
+    def set_user_information(self, user_name: str = None, roles: list = None, claims: list = None,
+                             source_addr: str = None):
+        """Set the default user/roles/claims (+ client source IP) for subsequent ops."""
         if user_name:
             self.user = user_name
         if roles is not None:
             self.roles = roles
         if claims is not None:
             self.claims = claims
+        if source_addr is not None:
+            self.source_addr = source_addr
 
     def set_permission_resolver(self, permission_resolver):
         """Retained for compatibility; permission resolution is server-side."""
@@ -272,12 +276,14 @@ class ManagedFiles:
     # ------------------------------------------------------------------ #
     # Internal helpers
     # ------------------------------------------------------------------ #
-    def _create_auth_context(self, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
+    def _create_auth_context(self, user: str = None, tenant: str = None, roles: list = None,
+                             claims: list = None, source_addr: str = None):
         """Build an AuthenticationContext for a request."""
         actual_user = user or self.user
         actual_tenant = tenant if tenant is not None else self.tenant
         actual_roles = roles if roles is not None else self.roles
         actual_claims = claims if claims is not None else self.claims
+        actual_source = source_addr if source_addr is not None else self.source_addr
 
         claims_map = {}
         for claim in (actual_claims or []):
@@ -293,6 +299,7 @@ class ManagedFiles:
             roles=list(actual_roles or []),
             tenant=actual_tenant,
             claims=claims_map,
+            source_addr=actual_source or "",
         )
 
     # ------------------------------------------------------------------ #
