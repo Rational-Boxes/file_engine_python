@@ -139,6 +139,32 @@ class TestFullIntegration(unittest.TestCase):
         self.assertFalse(next(e for e in restored if e.name == "gone.txt").deleted)
         self.assertIn("gone.txt", [e.name for e in self.admin.dir(d)])
 
+    def test_16_folder_mtime_is_newest_descendant(self):
+        # A folder's mtime is the newest file anywhere beneath it, recursively
+        # through subfolders — reported identically by stat() and dir() listings
+        # (WebDAV / REST / MCP all read these). An empty folder keeps its own time.
+        top = self.admin.mkdir(self.ws, "mt_top")
+        sub = self.admin.mkdir(top, "mt_sub")
+        empty_mtime = self.admin.stat(top).modified_at
+        time.sleep(1)
+        f = self.admin.touch(sub, "leaf.txt")
+        self.admin.put(f, b"deep content")
+        leaf = self.admin.stat(f).modified_at
+        # The file two levels down sets the mtime of its folder AND the top folder.
+        self.assertEqual(self.admin.stat(sub).modified_at, leaf)
+        self.assertEqual(self.admin.stat(top).modified_at, leaf)
+        self.assertGreater(leaf, empty_mtime)
+        # The directory listing agrees with stat for the folder entry.
+        entries = {e.name: e for e in self.admin.dir(self.ws)}
+        self.assertEqual(entries["mt_top"].modified_at, leaf)
+        # A newer file elsewhere in the subtree advances the top folder's mtime.
+        time.sleep(1)
+        f2 = self.admin.touch(top, "sibling.txt")
+        self.admin.put(f2, b"newer")
+        newer = self.admin.stat(f2).modified_at
+        self.assertEqual(self.admin.stat(top).modified_at, newer)
+        self.assertGreater(newer, leaf)
+
     # -- versioning -------------------------------------------------------
     def test_20_versions_restore_purge(self):
         f = self._mkfile("ver.txt", b"v1")
