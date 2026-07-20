@@ -165,6 +165,21 @@ class TestFullIntegration(unittest.TestCase):
         self.assertEqual(self.admin.stat(top).modified_at, newer)
         self.assertGreater(newer, leaf)
 
+    def test_17_folder_modified_by_is_newest_descendant_reviser(self):
+        # A folder's "modified by" tracks the reviser of the newest file in its
+        # subtree, just like its mtime — NOT the folder's owner. Use a distinct
+        # user for the newest write so it can't be confused with the owner.
+        top = self.admin.mkdir(self.ws, "mb_top")          # owner = the admin identity
+        sub = self.admin.mkdir(top, "mb_sub")
+        bob = ManagedFiles(user_name="reviser_bob", user_roles=["system_admin"],
+                           server_address=SERVER, tenant="default")
+        fb = bob.touch(sub, "by-bob.txt")                  # newest file, revised by bob
+        bob.put(fb, b"content by bob")
+        e = {x.name: x for x in self.admin.dir(self.ws)}["mb_top"]
+        self.assertEqual(e.modified_by, "reviser_bob")     # the reviser, not the owner
+        self.assertEqual(e.modified_at, self.admin.stat(fb).modified_at)
+        bob.close()
+
     # -- versioning -------------------------------------------------------
     def test_20_versions_restore_purge(self):
         f = self._mkfile("ver.txt", b"v1")
