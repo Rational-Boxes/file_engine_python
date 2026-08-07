@@ -750,6 +750,28 @@ class ManagedFiles:
         _check(resp, "get_effective_permissions", resource_uid)
         return [fileservice_pb2.Permission.Name(p) for p in resp.permissions]
 
+    def get_resource_acls(self, resource_uid: str, user: str = None, tenant: str = None,
+                          roles: list = None, claims: list = None) -> list:
+        """Return a resource's OWN explicit ACL rules (not inherited/effective) as a
+        list of dicts: ``{'principal': str, 'type': int, 'permissions': int,
+        'effect': 'allow'|'deny'}``. ``type`` is the PrincipalType (0 user, 1 role,
+        2 group[reserved], 3 other/'everyone', 4 claim) and ``permissions`` is the
+        raw permission bitmask. Requires MANAGE_ACL on the resource (or system_admin).
+        Raises on failure; returns [] when the resource has no explicit rules.
+        """
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        try:
+            resp = self.stub.GetResourceAcls(fileservice_pb2.GetResourceAclsRequest(
+                resource_uid=resource_uid, auth=auth))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_resource_acls", resource_uid)
+        _check(resp, "get_resource_acls", resource_uid)
+        return [
+            {"principal": a.principal, "type": a.type, "permissions": a.permissions,
+             "effect": "deny" if a.effect == 1 else "allow"}
+            for a in resp.acls
+        ]
+
     def grant_permission(self, resource_uid: str, principal: str, permission, effect="allow",
                          user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
