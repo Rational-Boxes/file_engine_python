@@ -1,6 +1,7 @@
 # Python client for the FileEngine gRPC service
 
-Migrate the adapter interface in file_engine_cpp/python/ as a stand-alone project.
+Migrate the adapter interface from the original C++ FileEngine implementation's
+`python/` directory (since retired) as a stand-alone project.
 
 The new implementation of the adapter must use the gRPC service implemented in
 ../file_engine_core/core/
