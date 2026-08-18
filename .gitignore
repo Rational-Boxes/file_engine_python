@@ -4,3 +4,10 @@ __pycache__/
 *~
 .tmp
 .pytest_cache/
+
+# Secrets live in .env files, and .env files never go into git.
+# Templates are the deliberate exception: they carry placeholders, not values.
+.env
+.env.*
+!.env.example
+!.env-default
