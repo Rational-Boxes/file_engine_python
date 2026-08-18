@@ -101,7 +101,14 @@ class Revision(BaseModel):
     """A single stored version of a file."""
     version: str  # timestamp string, e.g. "20260619_152218.171"
     name: str
-    user: str
+    #: Who uploaded THIS version, as recorded by the core.
+    #:
+    #: This used to be filled with the *calling* user, which meant anything
+    #: trusting it got a confident wrong answer — every version appeared to have
+    #: been uploaded by whoever happened to be listing them. It now comes from
+    #: the version row itself, and is empty when the core has no record (rows
+    #: written before the field was populated).
+    user: str = ""
 
 
 class StorageUsage(BaseModel):
@@ -615,7 +622,14 @@ class ManagedFiles:
         except grpc.RpcError as e:
             _raise_rpc(e, "revisions", uid)
         _check(resp, "revisions", uid, default_cls=NotFoundError)
-        return [Revision(version=ts, name=uid, user=auth.user) for ts in resp.versions]
+        # Prefer `entries`, which carries the uploader. `versions` is the older
+        # timestamp-only field, still populated by the core; fall back to it so
+        # this keeps working against a core that predates the change — with an
+        # empty user rather than a wrong one.
+        if resp.entries:
+            return [Revision(version=e.version_timestamp, name=uid, user=e.revised_by)
+                    for e in resp.entries]
+        return [Revision(version=ts, name=uid, user="") for ts in resp.versions]
 
     def restore_to_version(self, file_uid: str, version_timestamp: str, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
         """Restore a file to a prior version. Returns the restored version
