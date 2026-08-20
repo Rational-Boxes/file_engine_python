@@ -118,6 +118,28 @@ class StreamingTests(unittest.TestCase):
         self.mf.put_stream(uid, [payload])
         self.assertEqual(b"".join(self.mf.get_stream(uid)), payload)
 
+    def test_get_stream_serves_a_specific_past_version(self):
+        """Pinning is only useful if a pinned read can still stream.
+
+        Without a version on the streaming request, an older version has to go
+        through the unary GetVersion — capped by the message limit and
+        materialised on both sides. So a link pinned to a past version would
+        stop being streamable the moment the file was edited.
+        """
+        uid = self._new_file("versioned.bin")
+        first = b"VERSION ONE " * 90_000            # comfortably multi-chunk
+        self.mf.put_stream(uid, [first])
+        v1 = self.mf.stat(uid).version
+        self.mf.put_stream(uid, [b"VERSION TWO"])
+        v2 = self.mf.stat(uid).version
+        self.assertNotEqual(v1, v2)
+
+        self.assertEqual(b"".join(self.mf.get_stream(uid)), b"VERSION TWO")
+        chunks = list(self.mf.get_stream(uid, version=v1))
+        self.assertEqual(b"".join(chunks), first)
+        self.assertGreater(len(chunks), 1, "a past version must stream, not arrive whole")
+        self.assertEqual(b"".join(self.mf.get_stream(uid, version=v2)), b"VERSION TWO")
+
     def test_get_stream_raises_for_a_missing_file(self):
         with self.assertRaises(NotFoundError):
             list(self.mf.get_stream(str(uuid.uuid4())))

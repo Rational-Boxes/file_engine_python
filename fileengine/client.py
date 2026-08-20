@@ -523,29 +523,27 @@ class ManagedFiles:
         _check(resp, "get", uid, default_cls=NotFoundError)
         return io.BytesIO(resp.data)
 
-    def get_stream(self, uid: str, user: str = None, tenant: str = None,
-                   roles: list = None, claims: list = None):
-        """Yield the current version's content as it arrives, without ever
-        holding the whole file in memory.
+    def get_stream(self, uid: str, version: str = "", user: str = None,
+                   tenant: str = None, roles: list = None, claims: list = None):
+        """Yield a version's content as it arrives, without ever holding the
+        whole file in memory. ``version`` empty means the current one.
 
         The counterpart to :meth:`put_stream`. ``get()`` accumulates the whole
         response into a ``BytesIO``, which is fine for a config file and wrong
         for a 4 GiB model: the caller pays the memory even when it only wants to
         pipe the bytes somewhere. This hands back the chunks the server sends.
 
-        **A caveat that is not this client's to fix.** The core writes one gRPC
-        message per chunk its storage layer produces, and for at least some
-        files that is the entire file in a single callback — so the *server* can
-        emit one very large message regardless of what this method does, and a
-        file above the channel's receive limit then fails to download at all.
-        Bounding it properly needs the core to chunk its storage reads. Until
-        then this streams whatever the server chooses to send, which is strictly
-        better than buffering it as well.
+        Prefer this over ``get(back=N)`` for a specific version: that resolves
+        the name to an offset and falls back to the **unary** ``GetVersion``,
+        which materialises the file on both sides and is capped by the message
+        limit. ``StreamFileDownload`` carries the version on the request, so
+        every read has a streaming route.
         """
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             for resp in self.stub.StreamFileDownload(
-                    fileservice_pb2.GetFileRequest(uid=uid, auth=auth)):
+                    fileservice_pb2.GetFileRequest(
+                        uid=uid, version_timestamp=version or "", auth=auth)):
                 _check(resp, "get_stream", uid, default_cls=NotFoundError)
                 if resp.data:
                     yield resp.data
