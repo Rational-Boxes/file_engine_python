@@ -207,6 +207,14 @@ def _coerce_effect(effect):
     return int(effect)
 
 
+#: Largest body chunk put in a single gRPC message. Bounded on purpose: a
+#: multi-megabyte message monopolises the connection and can exceed a peer's
+#: receive limit, so content moves as a series of small messages rather than
+#: one large one. 4 MiB is comfortably under every limit in this platform
+#: (the core server allows 64 MiB; a grpc-js peer defaults to 4 MiB).
+MAX_WIRE_CHUNK = 4 * 1024 * 1024
+
+
 class ManagedFiles:
     """
     Python adapter for the FileEngine gRPC service that provides a
@@ -411,6 +419,77 @@ class ManagedFiles:
         _check(resp, "put", uid)
         return time.time()
 
+    def put_stream(self, uid: str, chunks, user: str = None, tenant: str = None,
+                   roles: list = None, claims: list = None,
+                   chunk_size: int = MAX_WIRE_CHUNK):
+        """Write a new version from an iterable of byte chunks, without ever
+        holding the whole file in memory.
+
+        ``put()`` sends the payload in a single ``PutFile`` message, so it is
+        bounded by the channel's max message size (64 MiB here) and by however
+        much memory the caller can spare. This uses the client-streaming
+        ``StreamFileUpload`` RPC instead: the core pulls chunks straight into
+        its storage writer and never assembles the file, so length is bounded
+        by storage rather than by a message size. It is the same RPC the C++
+        http_bridge has always used for ``PUT /v1/files/{uid}/content``.
+
+        ``chunks`` is any iterable of ``bytes`` (a generator is the point).
+
+        **Chunking is enforced here, not merely offered.** Whatever sizes the
+        caller yields, this re-splits them so no single gRPC message exceeds
+        ``chunk_size`` (default 4 MiB). A caller handing over one 96 MiB buffer
+        would otherwise produce one 96 MiB message — congesting the connection
+        and blowing the peer's receive limit — which is exactly the failure this
+        method exists to remove. Bounded messages are the requirement; a
+        generator is just the efficient way to feed them.
+
+        Wire protocol, matching the bridge's client: the FIRST message carries
+        ``uid`` + ``auth`` plus the first body chunk; later messages carry data
+        only. An empty iterable still sends one message with ``uid`` + ``auth``,
+        so the server has a target and writes an empty version rather than
+        failing with "No file data received".
+
+        Returns a float timestamp of the write on success. Raises a
+        :class:`FileEngineError` subclass on failure — notably
+        :class:`WriteUnavailableError` if the server is temporarily read-only
+        (primary-database failover).
+        """
+        auth = self._create_auth_context(user, tenant, roles, claims)
+
+        limit = max(1, int(chunk_size))
+
+        def _bounded():
+            """Re-split the caller's chunks so none exceeds ``limit``."""
+            for chunk in chunks:
+                if chunk is None:
+                    continue
+                if isinstance(chunk, str):
+                    chunk = chunk.encode("utf-8")
+                if not chunk:
+                    continue          # an empty chunk would end nothing early
+                view = memoryview(chunk)
+                for start in range(0, len(view), limit):
+                    yield bytes(view[start:start + limit])
+
+        def _requests():
+            first = True
+            for piece in _bounded():
+                if first:
+                    yield fileservice_pb2.PutFileRequest(
+                        uid=uid, auth=auth, data=piece)
+                    first = False
+                else:
+                    yield fileservice_pb2.PutFileRequest(data=piece)
+            if first:
+                yield fileservice_pb2.PutFileRequest(uid=uid, auth=auth)
+
+        try:
+            resp = self.stub.StreamFileUpload(_requests())
+        except grpc.RpcError as e:
+            _raise_rpc(e, "put_stream", uid)
+        _check(resp, "put_stream", uid)
+        return time.time()
+
     def get(self, uid: str, back: int = 0, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
         """
         Read file content as a BytesIO. ``back`` selects how many versions back
@@ -443,6 +522,35 @@ class ManagedFiles:
             _raise_rpc(e, "get", uid)
         _check(resp, "get", uid, default_cls=NotFoundError)
         return io.BytesIO(resp.data)
+
+    def get_stream(self, uid: str, user: str = None, tenant: str = None,
+                   roles: list = None, claims: list = None):
+        """Yield the current version's content as it arrives, without ever
+        holding the whole file in memory.
+
+        The counterpart to :meth:`put_stream`. ``get()`` accumulates the whole
+        response into a ``BytesIO``, which is fine for a config file and wrong
+        for a 4 GiB model: the caller pays the memory even when it only wants to
+        pipe the bytes somewhere. This hands back the chunks the server sends.
+
+        **A caveat that is not this client's to fix.** The core writes one gRPC
+        message per chunk its storage layer produces, and for at least some
+        files that is the entire file in a single callback — so the *server* can
+        emit one very large message regardless of what this method does, and a
+        file above the channel's receive limit then fails to download at all.
+        Bounding it properly needs the core to chunk its storage reads. Until
+        then this streams whatever the server chooses to send, which is strictly
+        better than buffering it as well.
+        """
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        try:
+            for resp in self.stub.StreamFileDownload(
+                    fileservice_pb2.GetFileRequest(uid=uid, auth=auth)):
+                _check(resp, "get_stream", uid, default_cls=NotFoundError)
+                if resp.data:
+                    yield resp.data
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_stream", uid)
 
     def entity_exists(self, entity_uid: str, include_deleted: bool = False) -> bool:
         """Return True if the entity exists, False if it does not.
