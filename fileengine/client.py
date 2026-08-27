@@ -28,6 +28,7 @@ from .exceptions import (
     AuthenticationError, PermissionDeniedError,
     NotFoundError, AlreadyExistsError, InvalidRequestError, OperationError,
 )
+from .service_token import authenticated_channel, load_service_token
 
 ROOT_UID = ""
 ZERO_UID = "00000000-0000-0000-0000-000000000000"
@@ -259,6 +260,12 @@ class ManagedFiles:
             ("grpc.max_send_message_length", 64 * 1024 * 1024),
         ]
         self.channel = grpc.insecure_channel(server_address, options=channel_options)
+        # Carry this service's credential on every call, via an interceptor
+        # rather than at each of the ~40 call sites — one missed site would be an
+        # UNAUTHENTICATED in production rather than an error at build time.
+        # A no-op when no token is configured, which is what keeps the SDK usable
+        # during the migration. See service_token.py.
+        self.channel = authenticated_channel(self.channel)
         self.stub = fileservice_pb2_grpc.FileServiceStub(self.channel)
 
     def close(self):
