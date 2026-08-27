@@ -240,6 +240,11 @@ class FileServiceStub:
                 request_serializer=fileservice__pb2.TriggerSyncRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.TriggerSyncResponse.FromString,
                 _registered_method=True)
+        self.ListAccountabilityRecords = channel.unary_unary(
+                '/fileengine_rpc.FileService/ListAccountabilityRecords',
+                request_serializer=fileservice__pb2.ListAccountabilityRecordsRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.ListAccountabilityRecordsResponse.FromString,
+                _registered_method=True)
 
 
 class FileServiceServicer:
@@ -502,6 +507,16 @@ class FileServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListAccountabilityRecords(self, request, context):
+        """The accountability pull surface (PROPOSAL_accountability_record.md §4.3).
+        audit_service reads core records forward by cursor over this instead of
+        depending on the Redis stream, so no broker outage, outbox overflow or
+        lost node can lose one, and a consumer can replay core history from zero.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_FileServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -709,6 +724,11 @@ def add_FileServiceServicer_to_server(servicer, server):
                     servicer.TriggerSync,
                     request_deserializer=fileservice__pb2.TriggerSyncRequest.FromString,
                     response_serializer=fileservice__pb2.TriggerSyncResponse.SerializeToString,
+            ),
+            'ListAccountabilityRecords': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListAccountabilityRecords,
+                    request_deserializer=fileservice__pb2.ListAccountabilityRecordsRequest.FromString,
+                    response_serializer=fileservice__pb2.ListAccountabilityRecordsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -1819,6 +1839,33 @@ class FileService:
             '/fileengine_rpc.FileService/TriggerSync',
             fileservice__pb2.TriggerSyncRequest.SerializeToString,
             fileservice__pb2.TriggerSyncResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListAccountabilityRecords(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/ListAccountabilityRecords',
+            fileservice__pb2.ListAccountabilityRecordsRequest.SerializeToString,
+            fileservice__pb2.ListAccountabilityRecordsResponse.FromString,
             options,
             channel_credentials,
             insecure,
