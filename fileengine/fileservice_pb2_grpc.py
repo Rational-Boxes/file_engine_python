@@ -235,6 +235,26 @@ class FileServiceStub:
                 request_serializer=fileservice__pb2.PurgeOldVersionsRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.PurgeOldVersionsResponse.FromString,
                 _registered_method=True)
+        self.EraseFile = channel.unary_unary(
+                '/fileengine_rpc.FileService/EraseFile',
+                request_serializer=fileservice__pb2.EraseFileRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.EraseFileResponse.FromString,
+                _registered_method=True)
+        self.ListPendingErasures = channel.unary_unary(
+                '/fileengine_rpc.FileService/ListPendingErasures',
+                request_serializer=fileservice__pb2.ListPendingErasuresRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.ListPendingErasuresResponse.FromString,
+                _registered_method=True)
+        self.AcknowledgeErasure = channel.unary_unary(
+                '/fileengine_rpc.FileService/AcknowledgeErasure',
+                request_serializer=fileservice__pb2.AcknowledgeErasureRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.AcknowledgeErasureResponse.FromString,
+                _registered_method=True)
+        self.GetErasureStatus = channel.unary_unary(
+                '/fileengine_rpc.FileService/GetErasureStatus',
+                request_serializer=fileservice__pb2.GetErasureStatusRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.GetErasureStatusResponse.FromString,
+                _registered_method=True)
         self.TriggerSync = channel.unary_unary(
                 '/fileengine_rpc.FileService/TriggerSync',
                 request_serializer=fileservice__pb2.TriggerSyncRequest.SerializeToString,
@@ -501,6 +521,47 @@ class FileServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def EraseFile(self, request, context):
+        """Erasure ("true delete") — PROPOSAL_accountability_record.md §5.4.
+
+        The payload is destroyed; the fact is retained. Distinct from RemoveFile,
+        which is a SOFT delete that UndeleteFile reverses: a consumer may
+        reasonably keep derived data for a soft-deleted file, and reusing that
+        path for erasure would leave extracted text and embeddings exactly where
+        they were.
+
+        Erasure is a tracked job, not a call that returns done (§5.4.3). The core
+        destroys its own content and records the erasure as INITIATED; each
+        participating service acknowledges; the erasure becomes COMPLETE only when
+        every participant has. Partial completion stays visibly incomplete, which
+        is what makes the completion record worth showing an auditor.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListPendingErasures(self, request, context):
+        """The guarantee path (§5.4.5). Consumers poll for erasures they have not
+        acknowledged, so one that missed the fail-open event, was down, or was
+        restored from a backup converges without the instruction being redelivered.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AcknowledgeErasure(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetErasureStatus(self, request, context):
+        """What an auditor is shown: participants, timestamps, outcome.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def TriggerSync(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -719,6 +780,26 @@ def add_FileServiceServicer_to_server(servicer, server):
                     servicer.PurgeOldVersions,
                     request_deserializer=fileservice__pb2.PurgeOldVersionsRequest.FromString,
                     response_serializer=fileservice__pb2.PurgeOldVersionsResponse.SerializeToString,
+            ),
+            'EraseFile': grpc.unary_unary_rpc_method_handler(
+                    servicer.EraseFile,
+                    request_deserializer=fileservice__pb2.EraseFileRequest.FromString,
+                    response_serializer=fileservice__pb2.EraseFileResponse.SerializeToString,
+            ),
+            'ListPendingErasures': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListPendingErasures,
+                    request_deserializer=fileservice__pb2.ListPendingErasuresRequest.FromString,
+                    response_serializer=fileservice__pb2.ListPendingErasuresResponse.SerializeToString,
+            ),
+            'AcknowledgeErasure': grpc.unary_unary_rpc_method_handler(
+                    servicer.AcknowledgeErasure,
+                    request_deserializer=fileservice__pb2.AcknowledgeErasureRequest.FromString,
+                    response_serializer=fileservice__pb2.AcknowledgeErasureResponse.SerializeToString,
+            ),
+            'GetErasureStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetErasureStatus,
+                    request_deserializer=fileservice__pb2.GetErasureStatusRequest.FromString,
+                    response_serializer=fileservice__pb2.GetErasureStatusResponse.SerializeToString,
             ),
             'TriggerSync': grpc.unary_unary_rpc_method_handler(
                     servicer.TriggerSync,
@@ -1812,6 +1893,114 @@ class FileService:
             '/fileengine_rpc.FileService/PurgeOldVersions',
             fileservice__pb2.PurgeOldVersionsRequest.SerializeToString,
             fileservice__pb2.PurgeOldVersionsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def EraseFile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/EraseFile',
+            fileservice__pb2.EraseFileRequest.SerializeToString,
+            fileservice__pb2.EraseFileResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListPendingErasures(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/ListPendingErasures',
+            fileservice__pb2.ListPendingErasuresRequest.SerializeToString,
+            fileservice__pb2.ListPendingErasuresResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AcknowledgeErasure(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/AcknowledgeErasure',
+            fileservice__pb2.AcknowledgeErasureRequest.SerializeToString,
+            fileservice__pb2.AcknowledgeErasureResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetErasureStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/GetErasureStatus',
+            fileservice__pb2.GetErasureStatusRequest.SerializeToString,
+            fileservice__pb2.GetErasureStatusResponse.FromString,
             options,
             channel_credentials,
             insecure,
