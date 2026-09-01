@@ -812,8 +812,15 @@ class ManagedFiles:
 
     def list_pending_erasures(self, participant: str, limit: int = 0, user: str = None,
                               tenant: str = None, roles: list = None,
-                              claims: list = None) -> list:
+                              claims: list = None, all_tenants: bool = True) -> list:
         """Erasures this participant has not acknowledged (§5.4.5).
+
+        Defaults to ALL tenants, deliberately. A consumer knows the tenants it has
+        happened to see traffic for, which is not the tenant set: one it has not
+        served since starting, or whose events it missed, is invisible to it, and
+        an erasure there would sit unacknowledged for ever with nothing saying
+        so. The core is the authority, so the core iterates. Acknowledge each
+        result with the tenant the result carries, not a fixed one.
 
         The GUARANTEE path. The event bus is fail-open and drop-oldest, which is
         fine for a notification and unacceptable for a contractual obligation —
@@ -825,7 +832,7 @@ class ManagedFiles:
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             resp = self.stub.ListPendingErasures(fileservice_pb2.ListPendingErasuresRequest(
-                participant=participant, limit=limit, auth=auth))
+                participant=participant, limit=limit, auth=auth, all_tenants=all_tenants))
         except grpc.RpcError as e:
             _raise_rpc(e, "list_pending_erasures", participant)
         _check(resp, "list_pending_erasures", participant)
