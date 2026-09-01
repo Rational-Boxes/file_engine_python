@@ -22,6 +22,15 @@ from pydantic import BaseModel, Field
 
 from . import fileservice_pb2
 from . import fileservice_pb2_grpc
+
+# Erasure states, as strings rather than enum ints at the API surface: callers
+# branch on "is it complete", and an int that silently means INITIATED when a
+# field is absent is exactly how a partial erasure gets read as a finished one.
+_ERASURE_STATE = {
+    fileservice_pb2.ERASURE_INITIATED: "initiated",
+    fileservice_pb2.ERASURE_COMPLETE: "complete",
+    fileservice_pb2.ERASURE_FAILED: "failed",
+}
 from .exceptions import (
     FileEngineError, FileSystemError,
     ServerUnreachableError, ServiceUnavailableError, WriteUnavailableError,
@@ -768,6 +777,111 @@ class ManagedFiles:
             _raise_rpc(e, "purge_old_versions", file_uid)
         _check(resp, "purge_old_versions", file_uid)
         return True
+
+    # ---------------------------- erasure ----------------------------- #
+    # "True delete" (PROPOSAL_accountability_record.md §5.4). Distinct from
+    # remove_file, which is a SOFT delete that undelete reverses.
+
+    def erase_file(self, file_uid: str, reason: str = "", retain_name: bool = False,
+                   user: str = None, tenant: str = None, roles: list = None,
+                   claims: list = None) -> dict:
+        """Erase a file: destroy all content, every version, and everything
+        derived from it, keeping only the record that it existed.
+
+        Returns the erasure record, NOT a success flag. The core's own copy is
+        destroyed synchronously, but derived data lives in other services and
+        each must acknowledge before the obligation is met, so the result is
+        normally ``state == "initiated"`` with ``awaiting`` naming who is
+        outstanding. Treating this as "done" is the false compliance claim the
+        whole design exists to avoid — poll ``erasure_status``.
+
+        ``retain_name`` defaults to False: the filename is itself party data.
+        """
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        try:
+            resp = self.stub.EraseFile(fileservice_pb2.EraseFileRequest(
+                uid=file_uid, reason=reason, retain_name=retain_name, auth=auth))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "erase_file", file_uid)
+        _check(resp, "erase_file", file_uid)
+        return {
+            "erasure_id": resp.erasure_id,
+            "state": _ERASURE_STATE.get(resp.state, "initiated"),
+            "awaiting": list(resp.awaiting),
+        }
+
+    def list_pending_erasures(self, participant: str, limit: int = 0, user: str = None,
+                              tenant: str = None, roles: list = None,
+                              claims: list = None, all_tenants: bool = True) -> list:
+        """Erasures this participant has not acknowledged (§5.4.5).
+
+        Defaults to ALL tenants, deliberately. A consumer knows the tenants it has
+        happened to see traffic for, which is not the tenant set: one it has not
+        served since starting, or whose events it missed, is invisible to it, and
+        an erasure there would sit unacknowledged for ever with nothing saying
+        so. The core is the authority, so the core iterates. Acknowledge each
+        result with the tenant the result carries, not a fixed one.
+
+        The GUARANTEE path. The event bus is fail-open and drop-oldest, which is
+        fine for a notification and unacceptable for a contractual obligation —
+        a dropped event would leave this service holding data the platform has
+        certified destroyed, silently. Poll this on a timer; a service that
+        missed the event, was down, or was restored from a backup converges here
+        with no instruction needing to be redelivered.
+        """
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        try:
+            resp = self.stub.ListPendingErasures(fileservice_pb2.ListPendingErasuresRequest(
+                participant=participant, limit=limit, auth=auth, all_tenants=all_tenants))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "list_pending_erasures", participant)
+        _check(resp, "list_pending_erasures", participant)
+        return [{"erasure_id": e.erasure_id, "uid": e.uid, "tenant": e.tenant,
+                 "initiated_at": e.initiated_at} for e in resp.erasures]
+
+    def acknowledge_erasure(self, erasure_id: str, participant: str, complied: bool = True,
+                            detail: str = "", user: str = None, tenant: str = None,
+                            roles: list = None, claims: list = None) -> str:
+        """Report this participant's outcome, closing the erasure when last.
+
+        Acknowledge only what was ACTUALLY destroyed. ``complied=False`` is
+        recorded rather than retried into silence: a service that cannot comply
+        is an unmet obligation and has to be visible as one, because the
+        completion record is what an auditor is shown.
+        """
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        try:
+            resp = self.stub.AcknowledgeErasure(fileservice_pb2.AcknowledgeErasureRequest(
+                erasure_id=erasure_id, participant=participant, complied=complied,
+                detail=detail, auth=auth))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "acknowledge_erasure", erasure_id)
+        _check(resp, "acknowledge_erasure", erasure_id)
+        return _ERASURE_STATE.get(resp.state, "initiated")
+
+    def erasure_status(self, erasure_id: str, user: str = None, tenant: str = None,
+                       roles: list = None, claims: list = None) -> dict:
+        """The attestation record: who erased what, when, and who has confirmed."""
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        try:
+            resp = self.stub.GetErasureStatus(fileservice_pb2.GetErasureStatusRequest(
+                erasure_id=erasure_id, auth=auth))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "erasure_status", erasure_id)
+        _check(resp, "erasure_status", erasure_id)
+        return {
+            "erasure_id": erasure_id,
+            "uid": resp.uid,
+            "tenant": resp.tenant,
+            "state": _ERASURE_STATE.get(resp.state, "initiated"),
+            "actor": resp.actor,
+            "reason": resp.reason,
+            "initiated_at": resp.initiated_at,
+            "completed_at": resp.completed_at,
+            "acks": [{"participant": a.participant, "acked_at": a.acked_at,
+                      "complied": a.complied, "detail": a.detail} for a in resp.acks],
+            "awaiting": list(resp.awaiting),
+        }
 
     # ------------------------------------------------------------------ #
     # Metadata
