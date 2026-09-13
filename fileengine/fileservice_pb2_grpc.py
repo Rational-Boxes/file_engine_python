@@ -55,6 +55,11 @@ class FileServiceStub:
                 request_serializer=fileservice__pb2.ListDirectoryWithDeletedRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.ListDirectoryWithDeletedResponse.FromString,
                 _registered_method=True)
+        self.ListRecentFiles = channel.unary_unary(
+                '/fileengine_rpc.FileService/ListRecentFiles',
+                request_serializer=fileservice__pb2.ListRecentFilesRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.ListRecentFilesResponse.FromString,
+                _registered_method=True)
         self.Touch = channel.unary_unary(
                 '/fileengine_rpc.FileService/Touch',
                 request_serializer=fileservice__pb2.TouchRequest.SerializeToString,
@@ -292,6 +297,13 @@ class FileServiceServicer:
 
     def ListDirectoryWithDeleted(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListRecentFiles(self, request, context):
+        """"What changed most recently, that I may see?" — answered in the core.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -600,6 +612,11 @@ def add_FileServiceServicer_to_server(servicer, server):
                     servicer.ListDirectoryWithDeleted,
                     request_deserializer=fileservice__pb2.ListDirectoryWithDeletedRequest.FromString,
                     response_serializer=fileservice__pb2.ListDirectoryWithDeletedResponse.SerializeToString,
+            ),
+            'ListRecentFiles': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListRecentFiles,
+                    request_deserializer=fileservice__pb2.ListRecentFilesRequest.FromString,
+                    response_serializer=fileservice__pb2.ListRecentFilesResponse.SerializeToString,
             ),
             'Touch': grpc.unary_unary_rpc_method_handler(
                     servicer.Touch,
@@ -921,6 +938,33 @@ class FileService:
             '/fileengine_rpc.FileService/ListDirectoryWithDeleted',
             fileservice__pb2.ListDirectoryWithDeletedRequest.SerializeToString,
             fileservice__pb2.ListDirectoryWithDeletedResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListRecentFiles(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/ListRecentFiles',
+            fileservice__pb2.ListRecentFilesRequest.SerializeToString,
+            fileservice__pb2.ListRecentFilesResponse.FromString,
             options,
             channel_credentials,
             insecure,

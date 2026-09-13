@@ -956,6 +956,45 @@ class ManagedFiles:
     # ------------------------------------------------------------------ #
     # Permissions / ACL
     # ------------------------------------------------------------------ #
+    def list_recent_files(self, limit: int = 50, under_uid: str = "", since_epoch: int = 0,
+                          user: str = None, tenant: str = None, roles: list = None,
+                          claims: list = None) -> dict:
+        """The most recently versioned files this identity may read, newest first.
+
+        Answered by the core in one query rather than assembled by the caller.
+        The alternative — reading a projection of file events and then checking
+        each row's readability — costs two RPCs per row, and the projection has
+        to be fed by an event for every file touched.
+
+        Returns ``{"entries": [...], "examined": int, "scan_truncated": bool}``.
+        ``examined`` is how many rows the core looked at before ACL filtering; the
+        gap between it and ``len(entries)`` is how much recent activity this
+        identity cannot see. ``scan_truncated`` says the page is short because the
+        scan bound was reached, not because there is nothing older.
+        """
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        try:
+            resp = self.stub.ListRecentFiles(fileservice_pb2.ListRecentFilesRequest(
+                limit=limit, under_uid=under_uid or "", since_epoch=int(since_epoch or 0),
+                auth=auth))
+        except grpc.RpcError as e:
+            raise _translate_rpc_error(e) from e
+        if not resp.success:
+            raise FileEngineError(resp.error or "ListRecentFiles failed")
+        return {
+            "entries": [
+                {
+                    "uid": e.uid, "name": e.name, "size": e.size,
+                    "modified_at": e.modified_at, "created_at": e.created_at,
+                    "owner": e.owner, "modified_by": e.modified_by,
+                    "created_by": e.created_by,
+                }
+                for e in resp.entries
+            ],
+            "examined": resp.examined,
+            "scan_truncated": resp.scan_truncated,
+        }
+
     def check_permission(self, resource_uid: str, required_permission, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
         Check whether the acting identity (user/roles) has a permission on a
