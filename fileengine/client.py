@@ -978,9 +978,8 @@ class ManagedFiles:
                 limit=limit, under_uid=under_uid or "", since_epoch=int(since_epoch or 0),
                 auth=auth))
         except grpc.RpcError as e:
-            raise _translate_rpc_error(e) from e
-        if not resp.success:
-            raise FileEngineError(resp.error or "ListRecentFiles failed")
+            _raise_rpc(e, "recent", under_uid or "")
+        _check(resp, "recent", under_uid or "")
         return {
             "entries": [
                 {
