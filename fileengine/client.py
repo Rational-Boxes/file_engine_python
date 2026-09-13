@@ -985,9 +985,9 @@ class ManagedFiles:
             "entries": [
                 {
                     "uid": e.uid, "name": e.name, "size": e.size,
-                    "modified_at": e.modified_at, "created_at": e.created_at,
-                    "owner": e.owner, "modified_by": e.modified_by,
-                    "created_by": e.created_by,
+                    "version": e.version, "version_count": e.version_count,
+                    "modified_at": e.modified_at, "modified_by": e.modified_by,
+                    "owner": e.owner,
                 }
                 for e in resp.entries
             ],
