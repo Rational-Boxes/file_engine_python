@@ -1052,7 +1052,8 @@ class ManagedFiles:
         ]
 
     def grant_permission(self, resource_uid: str, principal: str, permission, effect="allow",
-                         user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+                         user: str = None, tenant: str = None, roles: list = None, claims: list = None,
+                         recursive: bool = False, permission_mask: int = 0) -> bool:
         """
         Grant a permission to a principal on a resource. Prefix the principal
         with ``role:`` to target a role, or ``claim:<key>=<value>`` to target an
@@ -1065,14 +1066,18 @@ class ManagedFiles:
             resp = self.stub.GrantPermission(fileservice_pb2.GrantPermissionRequest(
                 resource_uid=resource_uid, principal=principal,
                 permission=_coerce_permission(permission),
-                effect=_coerce_effect(effect), auth=auth))
+                effect=_coerce_effect(effect), auth=auth,
+                # `recursive` applies to every descendant in ONE core operation;
+                # `permission_mask` sets several bits in one call. Walking the
+                # tree from here, or looping over bits, is what these replace.
+                recursive=bool(recursive), permission_mask=int(permission_mask or 0)))
         except grpc.RpcError as e:
             _raise_rpc(e, "grant_permission", resource_uid)
         _check(resp, "grant_permission", resource_uid)
         return True
 
     def revoke_permission(self, resource_uid: str, principal: str, permission, effect="allow",
-                          user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+                          user: str = None, tenant: str = None, roles: list = None, claims: list = None, recursive: bool = False, permission_mask: int = 0) -> bool:
         """Revoke a previously granted permission (mirror of grant_permission).
         Returns True on success; raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
@@ -1080,6 +1085,7 @@ class ManagedFiles:
             resp = self.stub.RevokePermission(fileservice_pb2.RevokePermissionRequest(
                 resource_uid=resource_uid, principal=principal,
                 permission=_coerce_permission(permission),
+                recursive=bool(recursive), permission_mask=int(permission_mask or 0),
                 effect=_coerce_effect(effect), auth=auth))
         except grpc.RpcError as e:
             _raise_rpc(e, "revoke_permission", resource_uid)
