@@ -956,6 +956,44 @@ class ManagedFiles:
     # ------------------------------------------------------------------ #
     # Permissions / ACL
     # ------------------------------------------------------------------ #
+    def list_recent_files(self, limit: int = 50, under_uid: str = "", since_epoch: int = 0,
+                          user: str = None, tenant: str = None, roles: list = None,
+                          claims: list = None) -> dict:
+        """The most recently versioned files this identity may read, newest first.
+
+        Answered by the core in one query rather than assembled by the caller.
+        The alternative — reading a projection of file events and then checking
+        each row's readability — costs two RPCs per row, and the projection has
+        to be fed by an event for every file touched.
+
+        Returns ``{"entries": [...], "examined": int, "scan_truncated": bool}``.
+        ``examined`` is how many rows the core looked at before ACL filtering; the
+        gap between it and ``len(entries)`` is how much recent activity this
+        identity cannot see. ``scan_truncated`` says the page is short because the
+        scan bound was reached, not because there is nothing older.
+        """
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        try:
+            resp = self.stub.ListRecentFiles(fileservice_pb2.ListRecentFilesRequest(
+                limit=limit, under_uid=under_uid or "", since_epoch=int(since_epoch or 0),
+                auth=auth))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "recent", under_uid or "")
+        _check(resp, "recent", under_uid or "")
+        return {
+            "entries": [
+                {
+                    "uid": e.uid, "name": e.name, "size": e.size,
+                    "version": e.version, "version_count": e.version_count,
+                    "modified_at": e.modified_at, "modified_by": e.modified_by,
+                    "owner": e.owner,
+                }
+                for e in resp.entries
+            ],
+            "examined": resp.examined,
+            "scan_truncated": resp.scan_truncated,
+        }
+
     def check_permission(self, resource_uid: str, required_permission, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
         """
         Check whether the acting identity (user/roles) has a permission on a
@@ -1014,7 +1052,8 @@ class ManagedFiles:
         ]
 
     def grant_permission(self, resource_uid: str, principal: str, permission, effect="allow",
-                         user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+                         user: str = None, tenant: str = None, roles: list = None, claims: list = None,
+                         recursive: bool = False, permission_mask: int = 0) -> bool:
         """
         Grant a permission to a principal on a resource. Prefix the principal
         with ``role:`` to target a role, or ``claim:<key>=<value>`` to target an
@@ -1027,14 +1066,18 @@ class ManagedFiles:
             resp = self.stub.GrantPermission(fileservice_pb2.GrantPermissionRequest(
                 resource_uid=resource_uid, principal=principal,
                 permission=_coerce_permission(permission),
-                effect=_coerce_effect(effect), auth=auth))
+                effect=_coerce_effect(effect), auth=auth,
+                # `recursive` applies to every descendant in ONE core operation;
+                # `permission_mask` sets several bits in one call. Walking the
+                # tree from here, or looping over bits, is what these replace.
+                recursive=bool(recursive), permission_mask=int(permission_mask or 0)))
         except grpc.RpcError as e:
             _raise_rpc(e, "grant_permission", resource_uid)
         _check(resp, "grant_permission", resource_uid)
         return True
 
     def revoke_permission(self, resource_uid: str, principal: str, permission, effect="allow",
-                          user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> bool:
+                          user: str = None, tenant: str = None, roles: list = None, claims: list = None, recursive: bool = False, permission_mask: int = 0) -> bool:
         """Revoke a previously granted permission (mirror of grant_permission).
         Returns True on success; raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)
@@ -1042,6 +1085,7 @@ class ManagedFiles:
             resp = self.stub.RevokePermission(fileservice_pb2.RevokePermissionRequest(
                 resource_uid=resource_uid, principal=principal,
                 permission=_coerce_permission(permission),
+                recursive=bool(recursive), permission_mask=int(permission_mask or 0),
                 effect=_coerce_effect(effect), auth=auth))
         except grpc.RpcError as e:
             _raise_rpc(e, "revoke_permission", resource_uid)

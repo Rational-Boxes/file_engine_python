@@ -32,3 +32,7 @@ __all__ = [
     "AuthenticationError", "PermissionDeniedError",
     "NotFoundError", "AlreadyExistsError", "InvalidRequestError", "OperationError",
 ]
+
+# Permission BIT values, for ManagedFiles.grant_permission(permission_mask=...).
+# The proto's `Permission` is an ordinal and cannot be OR-ed; these can.
+from .fileservice_pb2 import PermissionBit  # noqa: E402,F401
