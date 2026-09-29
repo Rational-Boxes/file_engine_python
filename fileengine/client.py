@@ -129,6 +129,50 @@ class StorageUsage(BaseModel):
     usage_percentage: float
 
 
+class RangeInfo(BaseModel):
+    """What the server said about a ranged read (storage_pipeline.md SR-12/13).
+
+    It arrives on the FIRST frame of a download stream and is zero on the rest,
+    so a reader that wants it must not throw that frame away. Every field here
+    describes PLAINTEXT, never stored bytes — a caller must never have to know
+    whether the deployment compresses or encrypts.
+    """
+
+    total_size: int = 0
+    """Plaintext length of the whole version, whatever range was asked for.
+
+    Worth having even for a whole-file read: answering an HTTP Range needs the
+    total, and without this a door has to Stat first. That round-trip is the
+    reason a media player asks for "bytes=0-" before it asks for anything else.
+    """
+
+    range_start: int = 0
+    range_length: int = 0
+
+    ranged: bool = False
+    """True when the server actually applied a range. False for a whole-file
+    read, INCLUDING one where the caller passed offset=0, length=0."""
+
+    range_method: str = ""
+    """"seek" when the cost was proportional to length, "scan" when it was
+    proportional to offset+length, "" from a server too old to say.
+
+    Part of the contract rather than diagnostics: a range API that silently
+    costs O(offset) is worse than no range API, because callers design against
+    the promise instead of the behaviour. Check it before building a scrubbing
+    UI on top of this.
+    """
+
+
+class RangeResult(BaseModel):
+    """The bytes of a ranged read, with what the server said about them."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    data: bytes
+    info: RangeInfo
+
+
 # gRPC transport status code -> exception class. These fire when the RPC itself
 # fails (server unreachable, deadline, etc.) rather than the application-level
 # success=false path the server uses for most errors.
@@ -142,6 +186,26 @@ _STATUS_MAP = {
     grpc.StatusCode.INVALID_ARGUMENT: InvalidRequestError,
     grpc.StatusCode.RESOURCE_EXHAUSTED: InvalidRequestError,
 }
+
+
+def _validate_range(offset, length, operation, uid=None):
+    """Reject a range the server would reject, before spending a round-trip.
+
+    Both must be non-negative; the proto's int64s happily carry a negative and
+    the server answers RangeNotSatisfiable, so the only thing sending it buys is
+    a slower error with a less specific message.
+
+    A range PAST the end is NOT rejected here. Whether that is empty or an error
+    is the server's call and depends on the version's size, which this side does
+    not know without a round-trip of its own — and guessing would make the
+    client disagree with the server about a boundary case.
+    """
+    if offset < 0:
+        raise InvalidRequestError(f"offset must be >= 0, got {offset}",
+                                  operation=operation, uid=uid)
+    if length < 0:
+        raise InvalidRequestError(f"length must be >= 0 (0 means to the end), got {length}",
+                                  operation=operation, uid=uid)
 
 
 def _raise_rpc(err, operation, uid=None):
@@ -506,12 +570,23 @@ class ManagedFiles:
         _check(resp, "put_stream", uid)
         return time.time()
 
-    def get(self, uid: str, back: int = 0, user: str = None, tenant: str = None, roles: list = None, claims: list = None):
+    def get(self, uid: str, back: int = 0, user: str = None, tenant: str = None,
+            roles: list = None, claims: list = None,
+            offset: int = 0, length: int = 0):
         """
         Read file content as a BytesIO. ``back`` selects how many versions back
         (0 = latest). Raises a :class:`FileEngineError` subclass on failure
         (e.g. :class:`NotFoundError` if the file or requested version is absent).
+
+        ``offset`` and ``length`` request a byte range over the PLAINTEXT,
+        half-open ``[offset, offset+length)``. They are appended to the
+        signature and default to ``0, 0``, which is "the whole file" — the
+        behaviour every existing caller already gets, unchanged.
+
+        Use :meth:`get_range` instead when you want to know what the server did
+        with the request: this returns bytes and throws the metadata away.
         """
+        _validate_range(offset, length, "get", uid)
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             if back == 0:
@@ -520,7 +595,8 @@ class ManagedFiles:
                 # the stream; an empty file simply yields no data chunks.
                 buf = io.BytesIO()
                 for resp in self.stub.StreamFileDownload(
-                        fileservice_pb2.GetFileRequest(uid=uid, auth=auth)):
+                        fileservice_pb2.GetFileRequest(
+                            uid=uid, auth=auth, offset=offset, length=length)):
                     _check(resp, "get", uid, default_cls=NotFoundError)
                     if resp.data:
                         buf.write(resp.data)
@@ -532,6 +608,22 @@ class ManagedFiles:
                 raise NotFoundError(f"version {back} back does not exist",
                                     operation="get", uid=uid)
             ts = versions[back].version
+            if offset or length:
+                # GetVersion is unary and carries no range fields, so a ranged
+                # read of an older version goes through the streaming RPC, which
+                # takes both a version and a range. Doing it here rather than
+                # raising means `back=` and `offset=` compose, which is what a
+                # caller reading a slice of a previous revision expects.
+                buf = io.BytesIO()
+                for r in self.stub.StreamFileDownload(
+                        fileservice_pb2.GetFileRequest(
+                            uid=uid, version_timestamp=ts, auth=auth,
+                            offset=offset, length=length)):
+                    _check(r, "get", uid, default_cls=NotFoundError)
+                    if r.data:
+                        buf.write(r.data)
+                buf.seek(0)
+                return buf
             resp = self.stub.GetVersion(fileservice_pb2.GetVersionRequest(
                 uid=uid, version_timestamp=ts, auth=auth))
         except grpc.RpcError as e:
@@ -540,7 +632,8 @@ class ManagedFiles:
         return io.BytesIO(resp.data)
 
     def get_stream(self, uid: str, version: str = "", user: str = None,
-                   tenant: str = None, roles: list = None, claims: list = None):
+                   tenant: str = None, roles: list = None, claims: list = None,
+                   offset: int = 0, length: int = 0):
         """Yield a version's content as it arrives, without ever holding the
         whole file in memory. ``version`` empty means the current one.
 
@@ -555,16 +648,97 @@ class ManagedFiles:
         limit. ``StreamFileDownload`` carries the version on the request, so
         every read has a streaming route.
         """
+        _validate_range(offset, length, "get_stream", uid)
         auth = self._create_auth_context(user, tenant, roles, claims)
         try:
             for resp in self.stub.StreamFileDownload(
                     fileservice_pb2.GetFileRequest(
-                        uid=uid, version_timestamp=version or "", auth=auth)):
+                        uid=uid, version_timestamp=version or "", auth=auth,
+                        offset=offset, length=length)):
                 _check(resp, "get_stream", uid, default_cls=NotFoundError)
                 if resp.data:
                     yield resp.data
         except grpc.RpcError as e:
             _raise_rpc(e, "get_stream", uid)
+
+    def get_range(self, uid: str, offset: int = 0, length: int = 0,
+                  version: str = "", user: str = None, tenant: str = None,
+                  roles: list = None, claims: list = None) -> RangeResult:
+        """Read a byte range and return it WITH what the server said about it.
+
+        ``offset``/``length`` are over the plaintext, half-open
+        ``[offset, offset+length)``; ``length=0`` means "to the end". The
+        defaults read the whole file, so this is also the way to learn a
+        version's size and whether this deployment can seek, in one call.
+
+        This exists alongside the ``offset=``/``length=`` arguments on
+        :meth:`get` and :meth:`get_stream` because those return bytes and drop
+        the metadata. :attr:`RangeInfo.range_method` in particular is worth
+        reading before you build anything that seeks: it says whether the cost
+        was proportional to ``length`` or to ``offset+length``, and a v1 payload
+        answers "scan".
+        """
+        _validate_range(offset, length, "get_range", uid)
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        buf = io.BytesIO()
+        info = RangeInfo()
+        first = True
+        try:
+            for resp in self.stub.StreamFileDownload(
+                    fileservice_pb2.GetFileRequest(
+                        uid=uid, version_timestamp=version or "", auth=auth,
+                        offset=offset, length=length)):
+                _check(resp, "get_range", uid, default_cls=NotFoundError)
+                if first:
+                    # SR-12: the metadata rides the FIRST frame and is zero on
+                    # the rest, so it is read once and not overwritten.
+                    info = RangeInfo(
+                        total_size=resp.total_size,
+                        range_start=resp.range_start,
+                        range_length=resp.range_length,
+                        ranged=resp.ranged,
+                        range_method=resp.range_method,
+                    )
+                    first = False
+                if resp.data:
+                    buf.write(resp.data)
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_range", uid)
+        return RangeResult(data=buf.getvalue(), info=info)
+
+    def get_range_stream(self, uid: str, offset: int = 0, length: int = 0,
+                         version: str = "", user: str = None, tenant: str = None,
+                         roles: list = None, claims: list = None):
+        """Like :meth:`get_range`, but yields chunks instead of buffering.
+
+        Yields ``(RangeInfo, bytes)``. The info is the same object every time —
+        read it from the first pair and ignore it thereafter — so that a caller
+        streaming a large range never has to choose between the metadata and
+        bounded memory, which is the choice :meth:`get_range` forces.
+        """
+        _validate_range(offset, length, "get_range_stream", uid)
+        auth = self._create_auth_context(user, tenant, roles, claims)
+        info = RangeInfo()
+        first = True
+        try:
+            for resp in self.stub.StreamFileDownload(
+                    fileservice_pb2.GetFileRequest(
+                        uid=uid, version_timestamp=version or "", auth=auth,
+                        offset=offset, length=length)):
+                _check(resp, "get_range_stream", uid, default_cls=NotFoundError)
+                if first:
+                    info = RangeInfo(
+                        total_size=resp.total_size,
+                        range_start=resp.range_start,
+                        range_length=resp.range_length,
+                        ranged=resp.ranged,
+                        range_method=resp.range_method,
+                    )
+                    first = False
+                if resp.data:
+                    yield info, resp.data
+        except grpc.RpcError as e:
+            _raise_rpc(e, "get_range_stream", uid)
 
     def entity_exists(self, entity_uid: str, include_deleted: bool = False) -> bool:
         """Return True if the entity exists, False if it does not.

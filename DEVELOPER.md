@@ -22,6 +22,19 @@ Regenerate the gRPC stubs only if the proto changes:
 ```bash
 cd fileengine
 python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. fileservice.proto
+
+# THEN FIX THE IMPORT, every time. protoc emits an absolute
+# `import fileservice_pb2 as fileservice__pb2` into fileservice_pb2_grpc.py,
+# which is not importable from inside the package — `import fileengine` fails
+# with ModuleNotFoundError: No module named 'fileservice_pb2'. It has to be
+# relative:
+sed -i 's/^import fileservice_pb2 as fileservice__pb2$/from . import fileservice_pb2 as fileservice__pb2/' \
+    fileservice_pb2_grpc.py
+
+# The proto itself is a COPY of file_engine_core/proto/fileservice.proto and is
+# expected to be byte-identical. It drifted once — the core gained the byte-range
+# fields and this copy did not — and the symptom was not an error anywhere: the
+# SDK simply had no way to ask for a range, silently.
 # then fix the stub import to be package-relative:
 #   from . import fileservice_pb2 as fileservice__pb2
 ```
