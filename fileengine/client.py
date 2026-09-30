@@ -1344,6 +1344,39 @@ class ManagedFiles:
     # ------------------------------------------------------------------ #
     # Administrative
     # ------------------------------------------------------------------ #
+    def tenant_state(self, tenant: str) -> dict:
+        """The tenant's lifecycle state, from the core's global registry.
+
+        The doors' login check (§3.4c of the deployment-admin proposal). Only
+        `live` admits a user; every other state refuses, including
+        `provisioning` (a half-built tenant must not be reachable) and
+        `decommissioned` (the registry row outlives the data so the name cannot
+        be reused, and must not become a way back in).
+
+        Returns ``{"found", "state", "admits", "state_since", "state_by",
+        "note"}``. A caller must FAIL CLOSED on anything it does not understand:
+        an exception, ``found=False``, or a state it does not recognise all mean
+        refuse. `admits` here is the CORE's opinion and is advisory — a door
+        should apply its own policy and refuse on disagreement, so that the two
+        disagreeing is detectable rather than silently resolved in favour of
+        access.
+        """
+        auth = self._create_auth_context()
+        try:
+            resp = self.stub.GetTenantState(fileservice_pb2.TenantStateRequest(
+                tenant=tenant, auth=auth))
+        except grpc.RpcError as e:
+            _raise_rpc(e, "tenant_state", tenant)
+        _check(resp, "tenant_state", tenant)
+        return {
+            "found": bool(resp.found),
+            "state": str(resp.state or ""),
+            "admits": bool(resp.admits),
+            "state_since": str(resp.state_since or ""),
+            "state_by": str(resp.state_by or ""),
+            "note": str(resp.state_note or ""),
+        }
+
     def get_storage_usage(self, user: str = None, tenant: str = None, roles: list = None, claims: list = None) -> Optional[StorageUsage]:
         """Return a ``StorageUsage`` model. Raises on failure."""
         auth = self._create_auth_context(user, tenant, roles, claims)

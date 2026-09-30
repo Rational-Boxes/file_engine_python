@@ -235,6 +235,11 @@ class FileServiceStub:
                 request_serializer=fileservice__pb2.StorageUsageRequest.SerializeToString,
                 response_deserializer=fileservice__pb2.StorageUsageResponse.FromString,
                 _registered_method=True)
+        self.GetTenantState = channel.unary_unary(
+                '/fileengine_rpc.FileService/GetTenantState',
+                request_serializer=fileservice__pb2.TenantStateRequest.SerializeToString,
+                response_deserializer=fileservice__pb2.TenantStateResponse.FromString,
+                _registered_method=True)
         self.PurgeOldVersions = channel.unary_unary(
                 '/fileengine_rpc.FileService/PurgeOldVersions',
                 request_serializer=fileservice__pb2.PurgeOldVersionsRequest.SerializeToString,
@@ -527,6 +532,26 @@ class FileServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetTenantState(self, request, context):
+        """Tenant lifecycle state, from the global `tenants` registry.
+        PROPOSAL_system_administration_application.md §3.4c.
+
+        THIS IS THE DOORS' LOGIN CHECK. Only `live` admits a user; every other
+        state refuses, including `provisioning` (a half-built tenant must not be
+        reachable) and `decommissioned` (the row outlives the data so the name
+        cannot be silently reused, and must not become a way back in).
+
+        A read rather than a per-door database connection, deliberately: the state
+        has ONE authoritative home and one read path. A door with its own libpq
+        route into the core's global schema would be a second reader of
+        core-owned state, and an LDAP copy would be a second WRITER — a tenant
+        suspended in one place and live in the other, reachable through whichever
+        door read the stale copy, failing silently.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def PurgeOldVersions(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -792,6 +817,11 @@ def add_FileServiceServicer_to_server(servicer, server):
                     servicer.GetStorageUsage,
                     request_deserializer=fileservice__pb2.StorageUsageRequest.FromString,
                     response_serializer=fileservice__pb2.StorageUsageResponse.SerializeToString,
+            ),
+            'GetTenantState': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTenantState,
+                    request_deserializer=fileservice__pb2.TenantStateRequest.FromString,
+                    response_serializer=fileservice__pb2.TenantStateResponse.SerializeToString,
             ),
             'PurgeOldVersions': grpc.unary_unary_rpc_method_handler(
                     servicer.PurgeOldVersions,
@@ -1910,6 +1940,33 @@ class FileService:
             '/fileengine_rpc.FileService/GetStorageUsage',
             fileservice__pb2.StorageUsageRequest.SerializeToString,
             fileservice__pb2.StorageUsageResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTenantState(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileengine_rpc.FileService/GetTenantState',
+            fileservice__pb2.TenantStateRequest.SerializeToString,
+            fileservice__pb2.TenantStateResponse.FromString,
             options,
             channel_credentials,
             insecure,
